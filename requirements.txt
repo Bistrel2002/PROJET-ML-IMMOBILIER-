@@ -1,2 +1,24 @@
+# --- Manipulation et nettoyage des données ---
 pandas
+numpy
 
+# --- Machine Learning & Modélisation ---
+scikit-learn
+xgboost
+joblib
+
+# --- Visualisation (EDA) ---
+matplotlib
+seaborn
+
+# --- Web Scraping (Options) ---
+requests
+beautifulsoup4
+
+# --- Environnement & Notebooks ---
+jupyter
+ipykernel
+python-dotenv
+
+# --- Outils divers & Tests ---
+pytest
