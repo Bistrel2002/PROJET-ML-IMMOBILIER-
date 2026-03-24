@@ -1,33 +1,99 @@
 import pandas as pd
 import numpy as np
-import pprint
+import sys
+import os
 
-# Import the module we just created
-from src.features.data_cleaner import clean_leboncoin_data
+# Ajoute le dossier racine du projet au chemin de recherche Python
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-print("--- Création d'un dataset de test simulant les données brutes ---")
+from src.features.data_cleaner import (
+    manage_duplicates, 
+    clean_numerical_columns, 
+    normalize_text_columns, 
+    impute_missing_values,
+    hash_contact_names,
+    select_features,
+    clean_leboncoin_data
+)
 
-raw_data = {
-    'id_annonce': ['id_1', 'id_2', 'id_3', 'id_3', 'id_4', 'id_5'],
-    'ville': [' Paris ', 'LYON', 'marseille', 'marseille', ' Bordeaux', 'paris'],
-    'type_bien': ['Appartement ', 'maison', ' APPARTEMENT', ' APPARTEMENT', 'Maison ', 'APPARTEMENT'],
-    'prix': ['150 000 €', '350 000.5', '120 000 €', '120 000 €', '200000', np.nan],
-    'surface': ['45 m²', '120m2', ' 30.5 m² ', ' 30.5 m² ', np.nan, '50'],
-    'pieces': ['2 pièces', '4', '1', '1', '5', np.nan],
-    'email': ['test@test.com', 'a@b.com', 'c@d.com', 'c@d.com', 'e@f.com', 'g@h.com'],
-    'telephone': ['0600000000', '0700000000', '0600000000', '0600000000', '0600000000', '0600000000'],
-    'description': ['Bel appartement', 'Grande maison', 'Studio', 'Studio', 'Maison de campagne', 'Appartement'],
-    'agence': ['Agence A', 'Agence B', 'Agence C', 'Agence C', 'Agence D', np.nan]
-}
+def test_manage_duplicates():
+    df = pd.DataFrame({
+        'id_annonce': ['1', '2', '2', '3'],
+        'prix': [10, 20, 20, 30]
+    })
+    df_clean = manage_duplicates(df, id_col='id_annonce')
+    assert len(df_clean) == 3
+    assert df_clean['id_annonce'].tolist() == ['1', '2', '3']
 
-df_raw = pd.DataFrame(raw_data)
-print("\n[Avant] DataFrame brut :")
-print(df_raw.to_string())
+def test_clean_numerical_columns():
+    df = pd.DataFrame({
+        'prix': ['150 000 €', '200000', ' 30.5 '],
+        'surface': ['45 m²', '120m2', 'NaN']
+    })
+    df_clean = clean_numerical_columns(df, columns=['prix', 'surface'])
+    assert df_clean['prix'].iloc[0] == 150000.0
+    assert df_clean['surface'].iloc[0] == 45.0
+    assert df_clean['surface'].iloc[1] == 120.0
+    assert pd.isna(df_clean['surface'].iloc[2])
 
-print("\n--- Exécution de la fonction de nettoyage ---")
-df_cleaned = clean_leboncoin_data(df_raw, numeric_cols=['prix', 'surface', 'pieces'], text_cols=['ville', 'type_bien'], id_col='id_annonce')
+def test_normalize_text_columns():
+    df = pd.DataFrame({
+        'ville': [' Paris ', 'LYON', 'marseille '],
+        'type_bien': ['Appartement ', 'maison', ' APPARTEMENT']
+    })
+    df_clean = normalize_text_columns(df, columns=['ville', 'type_bien'])
+    assert df_clean['ville'].tolist() == ['PARIS', 'LYON', 'MARSEILLE']
+    assert df_clean['type_bien'].tolist() == ['APPARTEMENT', 'MAISON', 'APPARTEMENT']
 
-print("\n[Après] DataFrame nettoyé :")
-print(df_cleaned.to_string())
-print("\nTypes des colonnes :")
-print(df_cleaned.dtypes)
+def test_impute_missing_values():
+    df = pd.DataFrame({
+        'prix': [100000, np.nan, 200000], # Moyenne = 150000
+    })
+    df_clean = impute_missing_values(df, strategy='mean')
+    assert df_clean['prix'].iloc[1] == 150000.0
+
+def test_hash_contact_names():
+    df = pd.DataFrame({
+        'agence': ['Agence A', np.nan]
+    })
+    df_clean = hash_contact_names(df, columns=['agence'])
+    assert df_clean['agence'].iloc[0] != 'Agence A'
+    assert len(df_clean['agence'].iloc[0]) == 64 # SHA-256 length
+    assert pd.isna(df_clean['agence'].iloc[1])
+
+def test_select_features():
+    df = pd.DataFrame({
+        'id_annonce': ['1'],
+        'prix': [100],
+        'email': ['test@test.com'], # PII
+        'telephone': ['06000000']   # PII
+    })
+    df_clean = select_features(df)
+    assert 'email' not in df_clean.columns
+    assert 'telephone' not in df_clean.columns
+    assert 'prix' in df_clean.columns
+
+def test_full_pipeline():
+    raw_data = {
+        'id_annonce': ['id_1', 'id_2', 'id_3', 'id_3'],
+        'ville': [' Paris ', 'LYON', 'marseille', 'marseille'],
+        'type_bien': ['Appartement ', 'maison', ' APPARTEMENT', ' APPARTEMENT'],
+        'prix': ['150 000 €', '350 000.5', '120 000 €', '120 000 €'],
+        'surface': ['45 m²', '120m2', ' 30.5 m² ', ' 30.5 m² '],
+        'pieces': ['2 pièces', '4', '1', '1'],
+        'email': ['test@test.com', 'a@b.com', 'c@d.com', 'c@d.com'],
+        'agence': ['Agence A', 'Agence B', 'Agence C', 'Agence C']
+    }
+    df = pd.DataFrame(raw_data)
+    df_clean = clean_leboncoin_data(df)
+    
+    # Check duplicate removed
+    assert len(df_clean) == 3
+    
+    # Check PII removed
+    assert 'email' not in df_clean.columns
+    
+    # Check cleaning
+    assert isinstance(df_clean['prix'].iloc[0], float)
+    assert df_clean['ville'].iloc[0] == 'PARIS'
+    assert len(df_clean['agence'].iloc[0]) == 64
