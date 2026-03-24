@@ -1,9 +1,9 @@
-name: 🔒 Protect Main Branch
+name: 🔒 Protéger la branche principale (main)
 
-# This workflow runs on every Pull Request targeting `main`.
-# Rules enforced:
-#   1. Only the `code` branch can be merged into `main`.
-#   2. The PR must have at least MIN_REVIEWS approved reviews.
+# Ce workflow s'exécute sur chaque Pull Request ciblant `main`.
+# Règles appliquées :
+#   1. Seule la branche `code` peut être fusionnée dans `main`.
+#   2. La PR doit avoir au moins MIN_REVUES approbations.
 
 on:
   pull_request:
@@ -13,80 +13,80 @@ on:
     types: [submitted, dismissed]
 
 env:
-  # ✏️ Change this to 2 if you want two required approvals
-  MIN_REVIEWS: 1
+  # ✏️ Passez cette valeur à 2 si vous souhaitez deux approbations requises
+  MIN_REVUES: 1
 
 jobs:
-  # ─────────────────────────────────────────────────────
-  # JOB 1 - Enforce that the source branch must be `code`
-  # ─────────────────────────────────────────────────────
-  enforce-source-branch:
-    name: Only `code` branch may merge into `main`
+  # ─────────────────────────────────────────────────────────────
+  # TÂCHE 1 - Vérifier que la branche source est bien `code`
+  # ─────────────────────────────────────────────────────────────
+  verifier-branche-source:
+    name: Seule la branche `code` peut fusionner dans `main`
     runs-on: ubuntu-latest
 
     steps:
-      - name: Check source branch
+      - name: Vérification de la branche source
         run: |
           SOURCE="${{ github.head_ref }}"
-          echo "PR source branch: $SOURCE"
+          echo "Branche source de la PR : $SOURCE"
           if [ "$SOURCE" != "code" ]; then
             echo "──────────────────────────────────────────────────────"
-            echo "❌ MERGE BLOCKED — wrong source branch"
+            echo "❌ FUSION BLOQUÉE — mauvaise branche source"
             echo "──────────────────────────────────────────────────────"
-            echo "Only the 'code' branch is allowed to merge into 'main'."
-            echo "You tried to merge from: '$SOURCE'"
+            echo "Seule la branche 'code' est autorisée à fusionner dans 'main'."
+            echo "Vous avez tenté de fusionner depuis : '$SOURCE'"
             echo ""
-            echo "Correct workflow:"
-            echo "  1. Merge your feature branch into 'code'"
-            echo "  2. Fix any errors in 'code'"
-            echo "  3. Open a PR from 'code' → 'main'"
+            echo "Processus correct :"
+            echo "  1. Fusionnez votre branche de travail dans 'code'"
+            echo "  2. Corrigez les erreurs éventuelles dans 'code'"
+            echo "  3. Ouvrez une PR depuis 'code' → 'main'"
             echo "──────────────────────────────────────────────────────"
             exit 1
           else
-            echo "✅ Source branch is 'code'. Proceeding to review check."
+            echo "✅ La branche source est 'code'. Passage à la vérification des approbations."
           fi
 
-  # ─────────────────────────────────────────────────────
-  # JOB 2 - Require at least MIN_REVIEWS approved reviews
-  # ─────────────────────────────────────────────────────
-  require-reviews:
-    name: Require minimum approved reviews before merge to main
+  # ─────────────────────────────────────────────────────────────
+  # TÂCHE 2 - Exiger au moins MIN_REVUES approbations
+  # ─────────────────────────────────────────────────────────────
+  verifier-approbations:
+    name: Vérifier le nombre minimum d'approbations avant la fusion dans main
     runs-on: ubuntu-latest
-    needs: enforce-source-branch   # only runs if job 1 passes
+    needs: verifier-branche-source   # ne s'exécute que si la tâche 1 réussit
 
     steps:
-      - name: Count approved reviews
+      - name: Compter les approbations reçues
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          REPO: ${{ github.repository }}
+          NUMERO_PR: ${{ github.event.pull_request.number }}
+          DEPOT: ${{ github.repository }}
         run: |
-          echo "Fetching reviews for PR #$PR_NUMBER in $REPO ..."
+          echo "Récupération des révisions pour la PR #$NUMERO_PR dans $DEPOT ..."
 
-          APPROVED=$(curl -s \
+          APPROUVE=$(curl -s \
             -H "Authorization: Bearer $GH_TOKEN" \
             -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/$REPO/pulls/$PR_NUMBER/reviews" \
+            "https://api.github.com/repos/$DEPOT/pulls/$NUMERO_PR/reviews" \
             | python3 -c "
           import sys, json
-          reviews = json.load(sys.stdin)
-          # Keep only the latest review per user, count APPROVED ones
-          latest = {}
-          for r in reviews:
-              latest[r['user']['login']] = r['state']
-          approved = sum(1 for s in latest.values() if s == 'APPROVED')
-          print(approved)
+          revisions = json.load(sys.stdin)
+          # Conserver uniquement la dernière révision par utilisateur, compter les APPROVED
+          derniere = {}
+          for r in revisions:
+              derniere[r['user']['login']] = r['state']
+          approuve = sum(1 for s in derniere.values() if s == 'APPROVED')
+          print(approuve)
           ")
 
           echo "──────────────────────────────────────────────────────"
-          echo "Approved reviews  : $APPROVED"
-          echo "Required minimum  : $MIN_REVIEWS"
+          echo "Approbations reçues   : $APPROUVE"
+          echo "Minimum requis        : $MIN_REVUES"
           echo "──────────────────────────────────────────────────────"
 
-          if [ "$APPROVED" -lt "$MIN_REVIEWS" ]; then
-            echo "❌ MERGE BLOCKED — not enough approvals."
-            echo "   This PR needs at least $MIN_REVIEWS approval(s) to merge into main."
+          if [ "$APPROUVE" -lt "$MIN_REVUES" ]; then
+            echo "❌ FUSION BLOQUÉE — pas assez d'approbations."
+            echo "   Cette PR nécessite au moins $MIN_REVUES approbation(s) pour fusionner dans main."
             exit 1
           else
-            echo "✅ Review requirement met ($APPROVED/$MIN_REVIEWS). Merge allowed."
+            echo "✅ Condition d'approbation remplie ($APPROUVE/$MIN_REVUES). Fusion autorisée."
           fi

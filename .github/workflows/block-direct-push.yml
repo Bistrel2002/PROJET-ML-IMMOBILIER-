@@ -1,8 +1,8 @@
-name: 🚫 Block Direct Push to Main
+name: 🚫 Bloquer les pushs directs vers main
 
-# This workflow fires if someone pushes directly to main.
-# The primary protection is via GitHub Branch Protection Rules (set in Settings).
-# This workflow acts as a second layer of defense and audit trail.
+# Ce workflow se déclenche si quelqu'un pousse directement sur main.
+# La protection principale est assurée par les règles de protection de branche GitHub (configurées dans Paramètres).
+# Ce workflow constitue une deuxième couche de défense et un journal d'audit.
 
 on:
   push:
@@ -10,21 +10,21 @@ on:
       - main
 
 jobs:
-  audit-direct-push:
-    name: Audit direct push to main
+  audit-push-direct:
+    name: Audit d'un push direct vers main
     runs-on: ubuntu-latest
 
     steps:
-      - name: Detect bypass
+      - name: Détection d'un contournement
         run: |
           echo "──────────────────────────────────────────────────"
-          echo "⚠️  WARNING: Direct push detected on 'main' branch"
+          echo "⚠️  AVERTISSEMENT : Push direct détecté sur la branche 'main'"
           echo "──────────────────────────────────────────────────"
-          echo "Pushed by : ${{ github.actor }}"
-          echo "Commit SHA: ${{ github.sha }}"
-          echo "Ref       : ${{ github.ref }}"
+          echo "Auteur du push  : ${{ github.actor }}"
+          echo "SHA du commit   : ${{ github.sha }}"
+          echo "Référence       : ${{ github.ref }}"
           echo ""
-          echo "This push bypassed the code → main protection flow."
-          echo "Please review this commit and ensure it went through"
-          echo "the 'code' integration branch before reaching main."
+          echo "Ce push a contourné le processus de protection code → main."
+          echo "Veuillez vérifier ce commit et vous assurer qu'il est passé"
+          echo "par la branche d'intégration 'code' avant d'atteindre main."
           echo "──────────────────────────────────────────────────"
