@@ -1,0 +1,9 @@
+# Raw data files, to prevent sensible data leaks and versioning large amounts of data
+data/raw/
+
+# Python venv
+.venv/
+
+# PyCharm
+.idea/
+
