@@ -16,11 +16,41 @@ jobs:
     steps:
       - name: Récupération du code source
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Nécessaire pour comparer l'historique des branches
+
+      - name: Vérifier que la branche est à jour avec 'code'
+        run: |
+          BRANCHE_CIBLE="${{ github.base_ref }}" # devrait être 'code'
+          BRANCHE_SOURCE="${{ github.head_ref }}"
+          
+          echo "Vérification de la mise à jour de $BRANCHE_SOURCE par rapport à $BRANCHE_CIBLE"
+          
+          # Récupérer les informations les plus récentes des deux branches
+          git fetch origin $BRANCHE_CIBLE
+          git fetch origin $BRANCHE_SOURCE
+          
+          # Vérifier si la branche cible est incluse dans la branche source
+          # (si oui, la branche de travail est à jour)
+          if ! git merge-base --is-ancestor origin/$BRANCHE_CIBLE origin/$BRANCHE_SOURCE; then
+            echo "──────────────────────────────────────────────────────"
+            echo "❌ FUSION BLOQUÉE : Votre branche n'est pas à jour !"
+            echo "──────────────────────────────────────────────────────"
+            echo "La branche '$BRANCHE_CIBLE' contient des modifications que vous n'avez pas."
+            echo "Pour résoudre ce problème, mettez à jour votre branche localement :"
+            echo "  git fetch origin"
+            echo "  git pull origin $BRANCHE_CIBLE"
+            echo "Puis poussez vos modifications avant de réessayer de fusionner."
+            echo "──────────────────────────────────────────────────────"
+            exit 1
+          else
+            echo "✅ La branche est à jour avec '$BRANCHE_CIBLE'."
+          fi
 
       - name: Configuration de Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: "3.12"
 
       - name: Installation des dépendances
         run: |
@@ -34,17 +64,22 @@ jobs:
       - name: Exécution des tests
         run: |
           if [ -d tests ]; then
-            echo "🧪 Lancement des tests..."
-            python -m pytest tests/ -v
+            echo "Lancement des tests..."
+            # On exécute pytest et on capture son code de sortie
+            python -m pytest tests/ -v || RC=$?
+            
+            # Pytest retourne 5 s'il ne trouve aucun test. On l'autorise.
+            if [ "${RC:-0}" -eq 5 ]; then
+              echo "✅ Aucun test détecté par pytest (code 5). La fusion n'est pas bloquée."
+            elif [ "${RC:-0}" -ne 0 ]; then
+              echo "❌ Des tests ont échoué !"
+              exit $RC
+            else
+              echo "✅ Tous les tests ont réussi !"
+            fi
           else
-            echo "⚠️ Aucun dossier tests/ trouvé. Tests ignorés."
+            echo "⚠️ Aucun dossier tests/ trouvé. Tests ignorés, fusion non bloquée."
           fi
-
-      - name: Vérification du style de code (flake8)
-        run: |
-          pip install flake8 --quiet
-          echo "🔍 Vérification du style de code..."
-          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics || true
 
       - name: Vérification du nom de la branche
         run: |
