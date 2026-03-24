@@ -1,0 +1,36 @@
+name: 🔒 Protect Main Branch
+
+# This workflow runs on every Pull Request targeting `main`.
+# It enforces that all merges into main come ONLY from the `code` branch.
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  enforce-merge-from-code:
+    name: Enforce merge from code branch only
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check source branch
+        run: |
+          SOURCE="${{ github.head_ref }}"
+          echo "PR source branch: $SOURCE"
+          if [ "$SOURCE" != "code" ]; then
+            echo "──────────────────────────────────────────────────────"
+            echo "❌ MERGE BLOCKED"
+            echo "──────────────────────────────────────────────────────"
+            echo "Only the 'code' branch is allowed to merge into 'main'."
+            echo "You tried to merge from: '$SOURCE'"
+            echo ""
+            echo "Correct workflow:"
+            echo "  1. Merge your feature branch into 'code'"
+            echo "  2. Fix any errors in 'code'"
+            echo "  3. Open a PR from 'code' → 'main'"
+            echo "──────────────────────────────────────────────────────"
+            exit 1
+          else
+            echo "✅ Source branch is 'code'. Merge to main is allowed."
+          fi

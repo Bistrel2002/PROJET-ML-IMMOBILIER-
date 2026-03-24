@@ -1,0 +1,57 @@
+name: ✅ Validate Code Branch
+
+# This workflow runs on every Pull Request targeting `code`.
+# Feature branches must pass these checks before they can be merged into `code`.
+
+on:
+  pull_request:
+    branches:
+      - code
+
+jobs:
+  validate-feature-branch:
+    name: Validate incoming feature branch
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          else
+            echo "⚠️ No requirements.txt found, skipping dependency install."
+          fi
+
+      - name: Run tests
+        run: |
+          if [ -d tests ]; then
+            echo "🧪 Running tests..."
+            python -m pytest tests/ -v
+          else
+            echo "⚠️ No tests/ directory found. Skipping tests."
+          fi
+
+      - name: Lint check (flake8)
+        run: |
+          pip install flake8 --quiet
+          echo "🔍 Running lint check..."
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics || true
+
+      - name: Branch name check
+        run: |
+          SOURCE="${{ github.head_ref }}"
+          echo "Feature branch attempting to merge: $SOURCE"
+          if [ "$SOURCE" = "main" ]; then
+            echo "❌ 'main' cannot be merged into 'code' directly."
+            exit 1
+          fi
+          echo "✅ Branch '$SOURCE' is eligible to merge into 'code'."
