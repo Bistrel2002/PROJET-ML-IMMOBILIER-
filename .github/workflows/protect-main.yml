@@ -1,16 +1,27 @@
 name: 🔒 Protect Main Branch
 
 # This workflow runs on every Pull Request targeting `main`.
-# It enforces that all merges into main come ONLY from the `code` branch.
+# Rules enforced:
+#   1. Only the `code` branch can be merged into `main`.
+#   2. The PR must have at least MIN_REVIEWS approved reviews.
 
 on:
   pull_request:
     branches:
       - main
+  pull_request_review:
+    types: [submitted, dismissed]
+
+env:
+  # ✏️ Change this to 2 if you want two required approvals
+  MIN_REVIEWS: 1
 
 jobs:
-  enforce-merge-from-code:
-    name: Enforce merge from code branch only
+  # ─────────────────────────────────────────────────────
+  # JOB 1 - Enforce that the source branch must be `code`
+  # ─────────────────────────────────────────────────────
+  enforce-source-branch:
+    name: Only `code` branch may merge into `main`
     runs-on: ubuntu-latest
 
     steps:
@@ -20,7 +31,7 @@ jobs:
           echo "PR source branch: $SOURCE"
           if [ "$SOURCE" != "code" ]; then
             echo "──────────────────────────────────────────────────────"
-            echo "❌ MERGE BLOCKED"
+            echo "❌ MERGE BLOCKED — wrong source branch"
             echo "──────────────────────────────────────────────────────"
             echo "Only the 'code' branch is allowed to merge into 'main'."
             echo "You tried to merge from: '$SOURCE'"
@@ -32,5 +43,50 @@ jobs:
             echo "──────────────────────────────────────────────────────"
             exit 1
           else
-            echo "✅ Source branch is 'code'. Merge to main is allowed."
+            echo "✅ Source branch is 'code'. Proceeding to review check."
+          fi
+
+  # ─────────────────────────────────────────────────────
+  # JOB 2 - Require at least MIN_REVIEWS approved reviews
+  # ─────────────────────────────────────────────────────
+  require-reviews:
+    name: Require minimum approved reviews before merge to main
+    runs-on: ubuntu-latest
+    needs: enforce-source-branch   # only runs if job 1 passes
+
+    steps:
+      - name: Count approved reviews
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          echo "Fetching reviews for PR #$PR_NUMBER in $REPO ..."
+
+          APPROVED=$(curl -s \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$REPO/pulls/$PR_NUMBER/reviews" \
+            | python3 -c "
+          import sys, json
+          reviews = json.load(sys.stdin)
+          # Keep only the latest review per user, count APPROVED ones
+          latest = {}
+          for r in reviews:
+              latest[r['user']['login']] = r['state']
+          approved = sum(1 for s in latest.values() if s == 'APPROVED')
+          print(approved)
+          ")
+
+          echo "──────────────────────────────────────────────────────"
+          echo "Approved reviews  : $APPROVED"
+          echo "Required minimum  : $MIN_REVIEWS"
+          echo "──────────────────────────────────────────────────────"
+
+          if [ "$APPROVED" -lt "$MIN_REVIEWS" ]; then
+            echo "❌ MERGE BLOCKED — not enough approvals."
+            echo "   This PR needs at least $MIN_REVIEWS approval(s) to merge into main."
+            exit 1
+          else
+            echo "✅ Review requirement met ($APPROVED/$MIN_REVIEWS). Merge allowed."
           fi
