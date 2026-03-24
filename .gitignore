@@ -1,6 +1,9 @@
 # Raw data files, to prevent sensible data leaks and versioning large amounts of data
 data/raw/
 
+# Python cache
+__pycache__/
+
 # Python venv
 .venv/
 
