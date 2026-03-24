@@ -1,0 +1,30 @@
+name: 🚫 Block Direct Push to Main
+
+# This workflow fires if someone pushes directly to main.
+# The primary protection is via GitHub Branch Protection Rules (set in Settings).
+# This workflow acts as a second layer of defense and audit trail.
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  audit-direct-push:
+    name: Audit direct push to main
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Detect bypass
+        run: |
+          echo "──────────────────────────────────────────────────"
+          echo "⚠️  WARNING: Direct push detected on 'main' branch"
+          echo "──────────────────────────────────────────────────"
+          echo "Pushed by : ${{ github.actor }}"
+          echo "Commit SHA: ${{ github.sha }}"
+          echo "Ref       : ${{ github.ref }}"
+          echo ""
+          echo "This push bypassed the code → main protection flow."
+          echo "Please review this commit and ensure it went through"
+          echo "the 'code' integration branch before reaching main."
+          echo "──────────────────────────────────────────────────"
