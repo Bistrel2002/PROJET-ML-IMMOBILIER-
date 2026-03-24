@@ -1,0 +1,53 @@
+name: 🔄 Auto-Sync Branches avec Code
+
+# Ce workflow s'exécute chaque fois que la branche 'code' reçoit de nouveaux commits (par exemple après avoir mergé une Pull Request).
+# Il va tenter de mettre à jour automatiquement toutes les autres branches de développement.
+
+on:
+  push:
+    branches:
+      - code
+
+permissions:
+  contents: write # Autorisation nécessaire pour pusher les mises à jour sur les autres branches
+
+jobs:
+  update-branches:
+    name: Mise à jour automatique des branches dérivées
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Récupération du dépôt
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Récupérer l'historique complet pour pouvoir fusionner
+          ref: code
+          
+      - name: Configuration de Git
+        run: |
+          git config --global user.name "GitHub Actions Auto-Sync"
+          git config --global user.email "actions@github.com"
+          
+      - name: Tentative de mise à jour des branches
+        run: |
+          # Lister toutes les branches distantes, sauf 'code', 'main' et 'HEAD'
+          BRANCHES=$(git branch -r | grep -v 'HEAD' | grep -v 'code$' | grep -v 'main$' | sed 's/origin\///')
+          
+          for branch in $BRANCHES; do
+            echo "──────────────────────────────────────────"
+            echo "Traitement de la branche : $branch"
+            
+            # Créer/se positionner sur la branche locale associée à la branche distante
+            git checkout -B "$branch" "origin/$branch"
+            
+            # Essayer de fusionner la branche 'code' dans cette branche
+            if git merge origin/code -m "chore: auto-merge 'code' dans '$branch'"; then
+              echo "✅ Fusion réussie ! Poussée des modifications..."
+              git push origin "$branch"
+            else
+              echo "❌ Conflit détecté sur $branch. Annulation de la mise à jour pour cette branche."
+              # On annule la fusion pour ne pas bloquer l'état du dépôt
+              git merge --abort
+              echo "⚠️ Le développeur devra mettre à jour cette branche manuellement (git pull origin code)."
+            fi
+          done
