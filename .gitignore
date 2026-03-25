@@ -1,6 +1,3 @@
-# Raw data files, to prevent sensible data leaks and versioning large amounts of data
-data/raw/*.csv
-
 # Python cache
 __pycache__/
 
@@ -10,3 +7,10 @@ __pycache__/
 # PyCharm
 .idea/
 
+# Database and intermediate files
+*.db
+
+
+# Local scripts
+enrich_raw_csv.py
+src/data/enrich_raw_csv.py
