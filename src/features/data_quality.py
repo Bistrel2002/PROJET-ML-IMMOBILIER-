@@ -26,3 +26,10 @@ def validate_constraints(df: pd.DataFrame) -> pd.DataFrame:
 	for column, condition in DATA_CONSTRAINTS.items():
 		df = df[df[column].map(condition)]
 	return df
+
+
+def data_quality(df: pd.DataFrame) -> pd.DataFrame:
+	df = df.copy()
+	df = extract_m2(df)
+	df = validate_constraints(df)
+	return df
