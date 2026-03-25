@@ -10,7 +10,6 @@ __pycache__/
 # Database and intermediate files
 *.db
 
-
 # Local scripts
 enrich_raw_csv.py
 src/data/enrich_raw_csv.py
