@@ -7,7 +7,10 @@ import pandas as pd
 # Ajoute le dossier racine du projet au chemin de recherche Python 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from src.features.data_ingest import list_raw_files, raw_dataframe, get_latest_raw_dataframe
+from src.features.data_ingest import (
+    list_raw_files, raw_dataframe, get_latest_raw_dataframe, load_raw,
+)
+
 
 class TestDataIngest(unittest.TestCase):
 
