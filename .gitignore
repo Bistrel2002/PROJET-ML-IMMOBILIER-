@@ -15,4 +15,4 @@ __pycache__/
 
 enrich_raw_csv.py
 
-*sql
+*.sql
