@@ -6,7 +6,7 @@ import pandas as pd
 # Ajoute le dossier racine du projet au chemin de recherche Python
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from src.features.feature_engineering import FEATURES, feature_selection, clustering
+from src.features.feature_engineering import FEATURES, feature_selection, clustering, predict_cluster
 
 dummy_df = pd.DataFrame({
 	"title": ["Test appartement 40 m²"],
@@ -36,6 +36,12 @@ class TestFeatureEngineering(unittest.TestCase):
 		df = dummy_df.copy()
 		
 		df = clustering(df, n_clusters=1)
+		assert isinstance(df, pd.DataFrame)
+		assert "cluster" in df.columns
+	
+	def test_predict_cluster(self):
+		df = dummy_df.copy()
+		df = predict_cluster(df)
 		assert isinstance(df, pd.DataFrame)
 		assert "cluster" in df.columns
 

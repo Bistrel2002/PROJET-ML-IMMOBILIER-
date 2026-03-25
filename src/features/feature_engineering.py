@@ -1,6 +1,9 @@
 import pandas as pd
+from pickle import dump, load
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import OneHotEncoder
+
+KMEANS_FILE = "saved_models/kmeans.pickle"
 
 FEATURES = [
 	"type",
@@ -24,7 +27,18 @@ def clustering(df: pd.DataFrame, on_cols: list = ["price", "surface"], n_cluster
 	X = df[on_cols]
 	kmeans = KMeans(n_clusters=n_clusters)
 	kmeans.fit(X)
+	with open(KMEANS_FILE, "wb") as file:
+		dump(kmeans, file, protocol=5)
 	labels = kmeans.labels_
+	df["cluster"] = labels
+	return df
+
+
+def predict_cluster(df: pd.DataFrame) -> pd.DataFrame:
+	with open(KMEANS_FILE, "rb") as file:
+		kmeans = load(file)
+	df = df.copy()
+	labels = kmeans.predict(df[kmeans.feature_names_in_])
 	df["cluster"] = labels
 	return df
 
