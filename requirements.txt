@@ -22,3 +22,8 @@ python-dotenv
 
 # --- Outils divers & Tests ---
 pytest
+
+# --- Serveur API (FastAPI) ---
+fastapi[standard]
+uvicorn
+pydantic
