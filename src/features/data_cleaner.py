@@ -2,6 +2,26 @@ import pandas as pd
 import numpy as np
 import hashlib
 
+# ---------------------------------------------------------------------------
+# Step 3 — Column renaming: bridges raw CSV names → ML-ready names.
+# Applied AFTER data_quality so quality checks can use the original names.
+# ---------------------------------------------------------------------------
+COLUMN_MAPPING = {
+    "id":     "id_annonce",
+    "type":   "type_bien",
+    "price":  "prix",
+    "city":   "ville",
+    "author": "agence",
+    # 'surface', 'zipcode', 'region' keep their names
+}
+
+# Columns dropped after quality checks — not useful for ML
+_COLUMNS_TO_DROP = [
+    "title", "category", "url", "image_url",
+    "contact", "suspicious", "score",
+    "created_at", "updated_at", "price_m2",
+]
+
 def manage_duplicates(df: pd.DataFrame, id_col: str = 'id_annonce') -> pd.DataFrame:
     """
     Tâche 3: Gérer les doublons basés sur l'identifiant technique de l'annonce.
@@ -90,6 +110,20 @@ def hash_contact_names(df: pd.DataFrame, columns: list = None) -> pd.DataFrame:
             
     return df_cleaned
 
+def rename_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Renames raw CSV column names to ML-ready names using COLUMN_MAPPING,
+    then drops columns that are irrelevant for ML.
+    This is applied as step 0 of clean_leboncoin_data().
+    """
+    df_out = df.copy()
+    mapping = {k: v for k, v in COLUMN_MAPPING.items() if k in df_out.columns}
+    df_out = df_out.rename(columns=mapping)
+    cols_to_drop = [c for c in _COLUMNS_TO_DROP if c in df_out.columns]
+    df_out = df_out.drop(columns=cols_to_drop)
+    return df_out
+
+
 def select_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     Filtrer les colonnes pour ne garder que celles utiles au Machine Learning,
@@ -97,44 +131,63 @@ def select_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     # Colonnes pertinentes pour prédire le prix + colonnes traçables pseudonymisées
     features_utiles = [
-        'id_annonce',  
-        'prix',        
-        'surface',     
-        'pieces',      
-        'type_bien',   
-        'ville',       
-        'code_postal', 
-        'agence'       
+        'id_annonce',
+        'prix',
+        'surface',
+        'pieces',
+        'type_bien',
+        'ville',
+        'zipcode',
+        'region',
+        'agence',
     ]
 
     # On garde seulement les colonnes présentes
     cols = [c for c in features_utiles if c in df.columns]
     return df[cols].copy()
 
-def clean_leboncoin_data(df: pd.DataFrame, 
-                         numeric_cols=['prix', 'surface', 'pieces'], 
-                         text_cols=['ville', 'type_bien'],
-                         hash_cols=['agence', 'contact'],
+def clean_leboncoin_data(df: pd.DataFrame,
+                         numeric_cols=None,
+                         text_cols=None,
+                         hash_cols=None,
                          id_col='id_annonce') -> pd.DataFrame:
     """
-    Pipeline principal qui enchaîne le nettoyage complet.
+    Step 3 of the pipeline — full cleaning after data_quality.
+
+    Chains:
+      rename_columns → select_features → manage_duplicates →
+      hash_contact_names → clean_numerical_columns →
+      normalize_text_columns → impute_missing_values
+
+    :param df: DataFrame from data_quality.data_quality()
+    :return: clean, ML-ready DataFrame
     """
-    # 0. Sélectionner uniquement les traits utiles pour le ML
-    df_clean = select_features(df)
-    
-    # 1. Tâche 3: Gérer les doublons
+    if numeric_cols is None:
+        numeric_cols = ['prix', 'surface', 'pieces']
+    if text_cols is None:
+        text_cols = ['ville', 'type_bien']
+    if hash_cols is None:
+        hash_cols = ['agence']
+
+    # 0. Renommer les colonnes brutes → noms ML + supprimer les colonnes inutiles
+    df_clean = rename_columns(df)
+
+    # 1. Sélectionner uniquement les traits utiles pour le ML
+    df_clean = select_features(df_clean)
+
+    # 2. Gérer les doublons
     df_clean = manage_duplicates(df_clean, id_col=id_col)
-    
-    # 2. Hachage des contacts pour pseudonymisation (SHA-256)
+
+    # 3. Hachage pour pseudonymisation (SHA-256)
     df_clean = hash_contact_names(df_clean, columns=hash_cols)
-    
-    # 3. Tâche 1: Nettoyer les caractères spéciaux dans les nombres
+
+    # 4. Nettoyer les caractères spéciaux dans les nombres
     df_clean = clean_numerical_columns(df_clean, columns=numeric_cols)
-    
-    # 4. Tâche 2: Normaliser le texte
+
+    # 5. Normaliser le texte
     df_clean = normalize_text_columns(df_clean, columns=text_cols)
-    
-    # 5. Tâche 4: Imputer les valeurs manquantes numériques par la moyenne
+
+    # 6. Imputer les valeurs manquantes numériques par la moyenne
     df_clean = impute_missing_values(df_clean, strategy='mean')
-    
+
     return df_clean
