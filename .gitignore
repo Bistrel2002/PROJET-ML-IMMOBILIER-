@@ -11,3 +11,8 @@ __pycache__/
 .idea/
 
 *.csv
+*.db
+
+enrich_raw_csv.py
+
+*sql
