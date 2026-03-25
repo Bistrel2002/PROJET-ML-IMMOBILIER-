@@ -13,3 +13,5 @@ __pycache__/
 # Local scripts
 enrich_raw_csv.py
 src/data/enrich_raw_csv.py
+test.ipynb
+
