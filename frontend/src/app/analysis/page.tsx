@@ -11,6 +11,7 @@ interface AnalysisData {
   history_data: any[];
   distribution_data: any[];
   feature_importance: any[];
+  top_cities: { city: string; price: number }[];
 }
 
 export default function AnalysisPage() {
@@ -147,31 +148,60 @@ export default function AnalysisPage() {
         </div>
       </div>
 
-      {/* Bottom Row - Feature Importance */}
-      <div className="pt-8">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 font-sans">Facteurs influents — Importance des features</h2>
-          <span className="text-xs text-brand-purple bg-brand-purple/10 px-2 py-0.5 rounded font-medium border border-brand-purple/20">Random Forest</span>
-        </div>
+      {/* Bottom Row - Features & Top 10 */}
+      <div className="grid lg:grid-cols-2 gap-12 pt-8">
         
-        <div className="space-y-4 max-w-4xl">
-          {data.feature_importance.map((feat) => (
-            <div key={feat.name} className="flex items-center">
-              <div className="w-1/4">
-                <span className="text-sm font-medium text-white">{feat.name}</span>
+        {/* Left: Feature Importance */}
+        <div>
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 font-sans">Facteurs influents — Importance des features</h2>
+            <span className="text-xs text-brand-purple bg-brand-purple/10 px-2 py-0.5 rounded font-medium border border-brand-purple/20">Random Forest</span>
+          </div>
+          
+          <div className="space-y-5">
+            {data.feature_importance.map((feat) => (
+              <div key={feat.name} className="flex items-center">
+                <div className="w-1/3">
+                  <span className="text-sm font-medium text-white">{feat.name}</span>
+                </div>
+                <div className="w-1/2 flex items-center pr-4">
+                  <div 
+                    className="h-2 rounded-full bg-brand-purple" 
+                    style={{ width: `${feat.pct}%` }}
+                  />
+                </div>
+                <div className="w-1/6 text-right">
+                  <span className="text-sm font-medium text-slate-300">{feat.pct}%</span>
+                </div>
               </div>
-              <div className="w-2/3 flex items-center">
-                <div 
-                  className="h-2 rounded-full bg-brand-purple" 
-                  style={{ width: `${feat.pct}%` }}
-                />
-              </div>
-              <div className="w-1/12 text-right">
-                <span className="text-sm font-medium text-slate-300">{feat.pct}%</span>
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
+
+        {/* Right: Top 10 Cities */}
+        <div>
+          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 font-sans mb-6 text-left">Top 10 : Villes les plus chères</h2>
+          <div className="h-[280px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={data.top_cities} layout="vertical" margin={{ top: 0, right: 30, left: 20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#334155" />
+                <XAxis type="number" stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `${(v/1000).toFixed(0)}k€`} />
+                <YAxis dataKey="city" type="category" stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} width={70} />
+                <Tooltip 
+                  cursor={{ fill: '#1e293b' }}
+                  contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '4px' }}
+                  formatter={(value: any) => [`${Number(value).toLocaleString()} €/m²`, 'Prix moyen']}
+                />
+                <Bar dataKey="price" radius={[0, 4, 4, 0]} barSize={12}>
+                  {data.top_cities.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill="#10b981" fillOpacity={0.8} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
       </div>
       
     </div>

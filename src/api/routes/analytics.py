@@ -136,6 +136,18 @@ def get_analysis_data(zone: str = "Nantes 44", type: str = "Appartement", smin: 
             { "name": "Type de bien", "pct": 38 },
             { "name": "Marché local", "pct": 31 },
             { "name": "Étage", "pct": 18 if type == "Appartement" else 2 },
+        ],
+        "top_cities": [
+            {"city": "Paris", "price": int(10500 * mult)},
+            {"city": "Boulogne", "price": int(8900 * mult)},
+            {"city": "Neuilly", "price": int(8600 * mult)},
+            {"city": "Levallois", "price": int(8400 * mult)},
+            {"city": "Vincennes", "price": int(7900 * mult)},
+            {"city": "Cannes", "price": int(6800 * mult)},
+            {"city": "Nice", "price": int(6200 * mult)},
+            {"city": "Lyon", "price": int(5200 * mult)},
+            {"city": "Bordeaux", "price": int(4600 * mult)},
+            {"city": "Aix-en-P", "price": int(4400 * mult)},
         ]
     }
 
