@@ -26,7 +26,9 @@ SELECT
     l.region,
     t.type_name,
     COUNT(f.id_annonce) AS volume_annonces,
-    ROUND(AVG(f.price), 2) AS prix_moyen
+    ROUND(AVG(f.price), 2) AS prix_moyen,
+    ROUND(AVG(f.price_m2), 2) AS prix_m2_moyen,
+    ROUND(AVG(f.surface), 1) AS surface_moyenne
 FROM fact_ads f
 JOIN dim_location l ON f.id_location = l.id_location
 JOIN dim_type t ON f.id_type = t.id_type
@@ -41,7 +43,8 @@ SELECT
     d.year,
     d.month,
     COUNT(f.id_annonce) AS volume_annonces,
-    ROUND(AVG(f.price), 2) AS prix_moyen
+    ROUND(AVG(f.price), 2) AS prix_moyen,
+    ROUND(AVG(f.price_m2), 2) AS prix_m2_moyen
 FROM fact_ads f
 JOIN dim_date d ON f.id_date = d.id_date
 GROUP BY d.year, d.month
