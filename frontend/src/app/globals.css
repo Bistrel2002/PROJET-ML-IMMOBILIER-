@@ -34,3 +34,14 @@ body {
   color: #94a3b8 !important;
   padding: 4px !important;
 }
+
+/* Leaflet Tooltip Dark Mode */
+.leaflet-tooltip.custom-tooltip {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.6) !important;
+  padding: 0 !important;
+}
+.leaflet-tooltip.custom-tooltip::before {
+  border-top-color: #334155 !important;
+}
