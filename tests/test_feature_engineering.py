@@ -9,7 +9,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 from src.features.feature_engineering import (
     remove_outliers, 
-    target_encode_ville, 
+    target_encode_ville,
+    encode_ville,
     add_derived_features, 
     drop_non_features, 
     encode_categoricals,
@@ -57,6 +58,13 @@ class TestFeatureEngineering(unittest.TestCase):
         result = target_encode_ville(df)
         # 'ville' should now be numeric (mean prices)
         self.assertTrue(pd.api.types.is_numeric_dtype(result["ville"]))
+        
+    def test_encode_ville(self):
+        df = make_clean_df()
+        result = encode_ville(df)
+        compare = target_encode_ville(df)
+        
+        self.assertEqual(result["ville"][0], compare["ville"][0])
 
     def test_encode_categoricals(self):
         df = make_clean_df()
@@ -83,7 +91,7 @@ class TestFeatureEngineering(unittest.TestCase):
 
     def test_engineer_features_pipeline(self):
         df = make_clean_df()
-        result = engineer_features(df, n_cluster=2)
+        result = engineer_features(df, n_cluster=2, cluster_cols=["surface", "pieces"])
         
         # Final result should be all numeric
         for col in result.columns:
