@@ -2,11 +2,33 @@ import pandas as pd
 import sqlite3
 import os
 
-# Configuration
-csv_file = "../../data/raw/ads_export.csv"
-db_name = "../../data/processed/immobilier.db"
+# Racine du projet (2 niveaux au-dessus de src/data/)
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+RAW_DIR = os.path.join(PROJECT_ROOT, "data", "raw")
+DB_PATH = os.path.join(PROJECT_ROOT, "data", "processed", "immobilier.db")
 
-def ingest_data():
+# Configuration
+def list_raw_files() -> list:
+    """
+    Lists the names of the csv files in the RAW_DIR sorted in descending order.
+    :return: list of csv filenames
+    """
+    if not os.path.exists(RAW_DIR):
+        raise FileNotFoundError(f"{RAW_DIR} does not exist")
+    raw_files = os.listdir(RAW_DIR)
+    raw_files = [file for file in raw_files if file[-4:] == ".csv"]
+    raw_files.sort(reverse=True)
+    return raw_files
+
+def ingest_data(csv_file=None, db_name=DB_PATH):
+    # Si aucun fichier CSV n'est spécifié, on prend le plus récent dans data/raw/
+    if csv_file is None:
+        raw_files = list_raw_files()
+        if not raw_files:
+            print("Erreur : Aucun fichier CSV trouvé dans data/raw/.")
+            return
+        csv_file = os.path.join(RAW_DIR, raw_files[0])
+
     if not os.path.exists(csv_file):
         print(f"Erreur : Le fichier '{csv_file}' est introuvable.")
         return
