@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { API_BASE_URL } from "@/lib/constants";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
@@ -12,17 +12,38 @@ interface SimulationResult {
   chart_data: { period: string; price: number }[];
 }
 
+interface PredictOptions {
+  cities: string[];
+  property_types: string[];
+  surface_range: { min: number; max: number };
+  pieces_range: { min: number; max: number };
+}
+
 export default function SimulationPage() {
+  const [options, setOptions] = useState<PredictOptions | null>(null);
   const [formData, setFormData] = useState({
-    city: "Nantes, 44000",
+    city: "Paris, 75000",
     property_type: "Appartement",
     surface_area: 68,
     rooms: 3,
-    condition: "Bon état"
   });
 
   const [result, setResult] = useState<SimulationResult | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // Load options on mount
+  useEffect(() => {
+    fetch(`${API_BASE_URL}/api/predict/options`)
+      .then(res => res.json())
+      .then((opts) => {
+        setOptions(opts);
+        // Set default city to first available
+        if (opts.cities && opts.cities.length > 0) {
+          setFormData(prev => ({ ...prev, city: opts.cities[0] }));
+        }
+      })
+      .catch(console.error);
+  }, []);
 
   const handleSimulate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,10 +83,16 @@ export default function SimulationPage() {
               <label className="block text-sm font-medium text-white mb-2">Ville / code postal</label>
               <select className="w-full bg-slate-900 border border-slate-700 rounded p-2.5 text-white text-sm focus:outline-none focus:border-brand-blue"
                       value={formData.city} onChange={e => setFormData({...formData, city: e.target.value})}>
-                <option value="Paris, 75000">Paris, 75000</option>
-                <option value="Lyon, 69000">Lyon, 69000</option>
-                <option value="Bordeaux, 33000">Bordeaux, 33000</option>
-                <option value="Nantes, 44000">Nantes, 44000</option>
+                {options ? options.cities.map(c => (
+                  <option key={c} value={c}>{c}</option>
+                )) : (
+                  <>
+                    <option value="Paris, 75000">Paris, 75000</option>
+                    <option value="Lyon, 69000">Lyon, 69000</option>
+                    <option value="Bordeaux, 33000">Bordeaux, 33000</option>
+                    <option value="Nantes, 44000">Nantes, 44000</option>
+                  </>
+                )}
               </select>
             </div>
             
@@ -73,8 +100,14 @@ export default function SimulationPage() {
               <label className="block text-sm font-medium text-white mb-2">Type de bien</label>
               <select className="w-full bg-slate-900 border border-slate-700 rounded p-2.5 text-white text-sm focus:outline-none focus:border-brand-blue"
                       value={formData.property_type} onChange={e => setFormData({...formData, property_type: e.target.value})}>
-                <option>Appartement</option>
-                <option>Maison</option>
+                {options ? options.property_types.map(t => (
+                  <option key={t} value={t}>{t}</option>
+                )) : (
+                  <>
+                    <option>Appartement</option>
+                    <option>Maison</option>
+                  </>
+                )}
               </select>
             </div>
             
@@ -82,25 +115,33 @@ export default function SimulationPage() {
               <div>
                 <label className="block text-sm font-medium text-white mb-2">Surface (m²)</label>
                 <input type="number" className="w-full bg-slate-900 border border-slate-700 rounded p-2.5 text-white text-sm focus:outline-none focus:border-brand-blue" 
-                       value={formData.surface_area} onChange={e => setFormData({...formData, surface_area: Number(e.target.value)})} />
+                       value={formData.surface_area} 
+                       min={options?.surface_range?.min ?? 5}
+                       max={options?.surface_range?.max ?? 500}
+                       onChange={e => setFormData({...formData, surface_area: Number(e.target.value)})}
+                       onBlur={() => {
+                         const min = options?.surface_range?.min ?? 5;
+                         const max = options?.surface_range?.max ?? 500;
+                         if (formData.surface_area < min) setFormData(prev => ({...prev, surface_area: min}));
+                         if (formData.surface_area > max) setFormData(prev => ({...prev, surface_area: max}));
+                       }} />
+                {options && <span className="text-[10px] text-slate-500 mt-1 block">{options.surface_range.min} – {options.surface_range.max} m² (données réelles)</span>}
               </div>
               <div>
                 <label className="block text-sm font-medium text-white mb-2">Nb pièces</label>
                 <input type="number" className="w-full bg-slate-900 border border-slate-700 rounded p-2.5 text-white text-sm focus:outline-none focus:border-brand-blue" 
-                       value={formData.rooms} onChange={e => setFormData({...formData, rooms: Number(e.target.value)})} />
+                       value={formData.rooms}
+                       min={options?.pieces_range?.min ?? 1}
+                       max={options?.pieces_range?.max ?? 15}
+                       onChange={e => setFormData({...formData, rooms: Number(e.target.value)})}
+                       onBlur={() => {
+                         const min = options?.pieces_range?.min ?? 1;
+                         const max = options?.pieces_range?.max ?? 15;
+                         if (formData.rooms < min) setFormData(prev => ({...prev, rooms: min}));
+                         if (formData.rooms > max) setFormData(prev => ({...prev, rooms: max}));
+                       }} />
+                {options && <span className="text-[10px] text-slate-500 mt-1 block">{options.pieces_range.min} – {options.pieces_range.max} pièces (données réelles)</span>}
               </div>
-            </div>
-            
-
-            
-            <div>
-              <label className="block text-sm font-medium text-white mb-2">État du bien</label>
-              <select className="w-full bg-slate-900 border border-brand-blue rounded p-2.5 text-white text-sm focus:outline-none focus:border-brand-blue"
-                      value={formData.condition} onChange={e => setFormData({...formData, condition: e.target.value})}>
-                <option>Bon état</option>
-                <option>À rénover</option>
-                <option>Neuf</option>
-              </select>
             </div>
             
             <div className="pt-2">
@@ -114,9 +155,9 @@ export default function SimulationPage() {
         {/* Right Column - Results */}
         <div className={`transition-opacity duration-500 ${result ? 'opacity-100' : 'opacity-30 pointer-events-none'}`}>
           <div className="mb-12">
-            <h2 className="text-sm font-medium text-white mb-2">Prix estimé aujourd'hui</h2>
-            <div className="text-4xl font-bold text-white mb-1">{result ? Math.round(result.current_estimated_price).toLocaleString() : "236 640"} €</div>
-            <div className="text-sm text-slate-400">{result ? result.price_per_sqm.toLocaleString() : "3 480"} €/m² · confiance {result ? result.confidence : "87"}%</div>
+            <h2 className="text-sm font-medium text-white mb-2">Prix estimé aujourd&apos;hui</h2>
+            <div className="text-4xl font-bold text-white mb-1">{result ? Math.round(result.current_estimated_price).toLocaleString() : "—"} €</div>
+            <div className="text-sm text-slate-400">{result ? result.price_per_sqm.toLocaleString() : "—"} €/m² · confiance {result ? result.confidence : "—"}%</div>
           </div>
 
           <div className="mb-8">
@@ -145,6 +186,12 @@ export default function SimulationPage() {
               </ResponsiveContainer>
             )}
           </div>
+
+          {result && (
+            <p className="text-[11px] text-slate-500 mt-4 leading-relaxed">
+              ⓘ Projections basées sur le taux moyen annuel de l&apos;immobilier français (~3.5%/an, source INSEE). Le modèle XGBoost prédit le prix actuel (R²=0.7675), pas l&apos;évolution future.
+            </p>
+          )}
           
         </div>
 

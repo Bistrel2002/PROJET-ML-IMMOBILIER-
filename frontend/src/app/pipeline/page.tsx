@@ -6,6 +6,7 @@ import { API_BASE_URL } from "@/lib/constants";
 interface PipelineData {
   steps: { id: number; title: string; desc: string; status: string; status_format: string }[];
   metrics: { mae: string; rmse: string; r2: string; train: string; test: string };
+  hyperparams?: { n_estimators: number; learning_rate: number; max_depth: number; subsample: number; colsample_bytree: number };
   stack: { name: string; val: string }[];
   last_run: string;
 }
@@ -63,18 +64,18 @@ export default function PipelinePage() {
           </div>
         </div>
 
-        {/* Right Column - Metrics & Stack */}
+        {/* Right Column - Metrics, Hyperparams & Stack */}
         <div className="space-y-12">
           <div>
             <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-6 font-sans">Métriques du modèle</h2>
             <div className="space-y-4">
               <div className="flex justify-between items-center text-sm">
                 <span className="text-white font-medium">MAE</span>
-                <span className="text-slate-300">{data.metrics.mae} €/m²</span>
+                <span className="text-slate-300">{data.metrics.mae} €</span>
               </div>
               <div className="flex justify-between items-center text-sm">
                 <span className="text-white font-medium">RMSE</span>
-                <span className="text-slate-300">{data.metrics.rmse} €/m²</span>
+                <span className="text-slate-300">{data.metrics.rmse} €</span>
               </div>
               <div className="flex justify-between items-center text-sm">
                 <span className="text-white font-medium">R² score</span>
@@ -90,6 +91,35 @@ export default function PipelinePage() {
               </div>
             </div>
           </div>
+
+          {/* Hyperparameters */}
+          {data.hyperparams && (
+            <div>
+              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-6 font-sans">Hyperparamètres XGBoost</h2>
+              <div className="space-y-4">
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-white font-medium">n_estimators</span>
+                  <span className="text-brand-green font-mono text-xs">{data.hyperparams.n_estimators}</span>
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-white font-medium">learning_rate</span>
+                  <span className="text-brand-green font-mono text-xs">{data.hyperparams.learning_rate}</span>
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-white font-medium">max_depth</span>
+                  <span className="text-brand-green font-mono text-xs">{data.hyperparams.max_depth}</span>
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-white font-medium">subsample</span>
+                  <span className="text-brand-green font-mono text-xs">{data.hyperparams.subsample}</span>
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-white font-medium">colsample_bytree</span>
+                  <span className="text-brand-green font-mono text-xs">{data.hyperparams.colsample_bytree}</span>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div>
             <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-6 font-sans">Stack technique</h2>
