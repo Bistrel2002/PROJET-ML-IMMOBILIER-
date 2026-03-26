@@ -71,7 +71,7 @@ class TestFeatureEngineering(unittest.TestCase):
 
     def test_train_clustering(self):
         df = make_clean_df()
-        result = train_clustering(df, n_cluster=2)
+        result = train_clustering(df, n_cluster=2, cols_used=["surface", "pieces"])
         
         self.assertIn("cluster", result.columns)
     

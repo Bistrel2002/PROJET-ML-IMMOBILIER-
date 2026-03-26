@@ -153,7 +153,7 @@ def predict_cluster(df: pd.DataFrame) -> pd.DataFrame:
 # =====================================================================
 # Pipeline Step 4 : chaîne complète
 # =====================================================================
-def engineer_features(df: pd.DataFrame, n_cluster: int = None) -> pd.DataFrame:
+def engineer_features(df: pd.DataFrame, n_cluster: int = None, cluster_cols: list = None) -> pd.DataFrame:
     """
     Step 4 of the pipeline — full feature engineering.
     """
@@ -166,8 +166,8 @@ def engineer_features(df: pd.DataFrame, n_cluster: int = None) -> pd.DataFrame:
     df = add_derived_features(df)
     df = drop_non_features(df)
     df = encode_categoricals(df)
-    if n_cluster:
-        df = train_clustering(df, n_cluster=n_cluster)
+    if n_cluster and cluster_cols:
+        df = train_clustering(df, n_cluster=n_cluster, cols_used=cluster_cols)
     else:
         df = train_clustering(df)
     return df
