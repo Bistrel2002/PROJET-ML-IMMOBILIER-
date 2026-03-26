@@ -12,7 +12,9 @@ from src.features.feature_engineering import (
     target_encode_ville, 
     add_derived_features, 
     drop_non_features, 
-    encode_categoricals, 
+    encode_categoricals,
+    train_clustering,
+    predict_cluster,
     engineer_features
 )
 
@@ -67,9 +69,21 @@ class TestFeatureEngineering(unittest.TestCase):
         # Check if type_bien_APPARTEMENT is present
         self.assertTrue("type_bien_APPARTEMENT" in result.columns)
 
+    def test_train_clustering(self):
+        df = make_clean_df()
+        result = train_clustering(df, n_cluster=2)
+        
+        self.assertIn("cluster", result.columns)
+    
+    def test_predict_cluster(self):
+        df = make_clean_df()
+        result = predict_cluster(df)
+        
+        self.assertIn("cluster", result.columns)
+
     def test_engineer_features_pipeline(self):
         df = make_clean_df()
-        result = engineer_features(df)
+        result = engineer_features(df, n_cluster=2)
         
         # Final result should be all numeric
         for col in result.columns:
