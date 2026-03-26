@@ -8,6 +8,7 @@ import hashlib
 # ---------------------------------------------------------------------------
 COLUMN_MAPPING = {
     "id":     "id_annonce",
+    "title":  "title",
     "type":   "type_bien",
     "price":  "prix",
     "city":   "ville",
@@ -17,7 +18,7 @@ COLUMN_MAPPING = {
 
 # Columns dropped after quality checks — not useful for ML
 _COLUMNS_TO_DROP = [
-    "title", "category", "url", "image_url",
+    "category", "url", "image_url",
     "contact", "suspicious", "score",
     "created_at", "updated_at", "price_m2",
 ]
