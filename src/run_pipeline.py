@@ -23,10 +23,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from features.data_ingest import load_raw
-from features.data_quality import data_quality
-from features.data_cleaner import clean_leboncoin_data
-from features.feature_engineering import engineer_features
+from src.features.data_ingest import load_raw
+from src.features.data_quality import data_quality
+from src.features.data_cleaner import clean_leboncoin_data
+from src.features.feature_engineering import engineer_features
 
 # ---------------------------------------------------------------------------
 CLEAN_DIR = ROOT / "data" / "clean"
@@ -71,7 +71,7 @@ def run(filename: str = None) -> Path:
 
     # ── Step 5: Save to data/clean/ ─────────────────────────────────────────
     CLEAN_DIR.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    timestamp = datetime.now().strftime("%Y-%m-%d")
     out_path = CLEAN_DIR / f"{timestamp}_clean.csv"
     df_features.to_csv(out_path)
     log.info(f"Step 5 — Saved     : {out_path.relative_to(ROOT)}")
