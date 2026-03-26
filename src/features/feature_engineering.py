@@ -17,6 +17,7 @@ from sklearn.cluster import KMeans
 from pickle import dump, load
 
 MODEL_DIR = "saved_models/"
+CITY_ENCODING_FILE = f"{MODEL_DIR}city_encoding.pickle"
 KMEANS_FILE = f"{MODEL_DIR}kmeans.pickle"
 
 
@@ -56,6 +57,22 @@ def target_encode_ville(df: pd.DataFrame, target_col: str = 'prix',
         / (city_stats['count'] + smoothing)
     )
     df['ville'] = df['ville'].map(city_stats['smoothed'])
+    with open(CITY_ENCODING_FILE, "wb") as f:
+        dump(city_stats['smoothed'], f)
+    return df
+
+
+def encode_ville(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Encode la variable 'ville' en utilisant l'association générée par target_encode_ville.
+    (à utiliser sur les nouvelles données)
+    :param df: DataFrame pandas
+    :return: DataFrame pandas
+    """
+    df = df.copy()
+    with open(CITY_ENCODING_FILE, "rb") as f:
+        city_code = load(f)
+    df['ville'] = df['ville'].map(lambda city: city_code[city.upper()])
     return df
 
 
@@ -69,6 +86,7 @@ def add_derived_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     df = df.copy()
     df['prix_log'] = np.log1p(df['prix'])
+    df ['surface_log'] = np.log1p(df['surface'])
     return df
 
 
@@ -101,7 +119,7 @@ def encode_categoricals(df: pd.DataFrame) -> pd.DataFrame:
 # =====================================================================
 # 4f. Clustering
 # =====================================================================
-def train_clustering(df: pd.DataFrame, n_cluster: int = 4, cols_used: list = ["surface", "pieces"]) -> pd.DataFrame:
+def train_clustering(df: pd.DataFrame, n_cluster: int = 8, cols_used: list = ["surface_log", "pieces", "type_bien_APPARTEMENT", "type_bien_MAISON", "type_bien_TERRAIN"]) -> pd.DataFrame:
     """
     Entraine le modèle de clustering (KMeans) et rajoute une colonne au DF avec le cluster de chaque ligne.
     :param df: DataFrame pandas, les données à cluster
@@ -135,7 +153,7 @@ def predict_cluster(df: pd.DataFrame) -> pd.DataFrame:
 # =====================================================================
 # Pipeline Step 4 : chaîne complète
 # =====================================================================
-def engineer_features(df: pd.DataFrame, n_cluster: int = 4) -> pd.DataFrame:
+def engineer_features(df: pd.DataFrame, n_cluster: int = None) -> pd.DataFrame:
     """
     Step 4 of the pipeline — full feature engineering.
     """
@@ -148,5 +166,8 @@ def engineer_features(df: pd.DataFrame, n_cluster: int = 4) -> pd.DataFrame:
     df = add_derived_features(df)
     df = drop_non_features(df)
     df = encode_categoricals(df)
-    df = train_clustering(df, n_cluster=n_cluster)
+    if n_cluster:
+        df = train_clustering(df, n_cluster=n_cluster)
+    else:
+        df = train_clustering(df)
     return df
