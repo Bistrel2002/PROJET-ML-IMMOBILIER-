@@ -3,28 +3,6 @@ import pandas as pd
 
 RAW_DIR = "data/raw/"
 
-# ---------------------------------------------------------------------------
-# Column mapping: raw CSV column names → names expected by data_cleaner.py
-# ---------------------------------------------------------------------------
-COLUMN_MAPPING = {
-    "id":       "id_annonce",
-    "type":     "type_bien",
-    "price":    "prix",
-    "city":     "ville",
-    "author":   "agence",
-    # columns kept with their original names: surface, zipcode, region
-}
-
-# Columns to drop after renaming — not useful for ML
-_COLUMNS_TO_DROP = [
-    "title", "category", "url", "image_url",
-    "contact", "suspicious", "score",
-    "created_at", "updated_at", "price_m2",
-]
-
-# Columns that must exist after renaming for the pipeline to be valid
-REQUIRED_COLUMNS = ["id_annonce", "type_bien", "prix", "ville", "surface"]
-
 
 def list_raw_files() -> list:
     """
