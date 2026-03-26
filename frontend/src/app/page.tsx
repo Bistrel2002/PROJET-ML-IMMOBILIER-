@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { API_BASE_URL } from "@/lib/constants";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { ArrowUpRight, Building2, Home as HomeIcon } from "lucide-react";
 
 interface DashboardData {
@@ -13,17 +13,33 @@ interface DashboardData {
     pred_6mo_pct: string;
     ads_count: string;
     mae: string;
+    r2_pct: string;
   };
   chart_data: any[];
   alerts: { zone: string; change_pct: string; timeframe: string; reason: string; color_theme: string }[];
   active_markets: { type: string; change_per_year: string; icon: string; price: string; location: string; confidence: number; color_theme: string }[];
 }
 
+interface DashboardOptions {
+  property_types: string[];
+  regions: string[];
+}
+
 export default function HomeDashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
-  const [propertyType, setPropertyType] = useState("Maison");
+  const [options, setOptions] = useState<DashboardOptions | null>(null);
+  const [propertyType, setPropertyType] = useState("Tous");
   const [region, setRegion] = useState("France entière");
 
+  // Load dropdown options once
+  useEffect(() => {
+    fetch(`${API_BASE_URL}/api/analytics/dashboard/options`)
+      .then(res => res.json())
+      .then(setOptions)
+      .catch(console.error);
+  }, []);
+
+  // Load dashboard data on filter change
   useEffect(() => {
     fetch(`${API_BASE_URL}/api/analytics/dashboard?type=${propertyType}&region=${region}`)
       .then(res => res.json())
@@ -33,6 +49,10 @@ export default function HomeDashboard() {
 
   if (!data) {
     return <div className="flex h-full items-center justify-center text-slate-400">Chargement du tableau de bord...</div>;
+  }
+
+  if (!data.kpis) {
+    return <div className="flex h-full items-center justify-center text-red-400">Aucune donnée disponible. Vérifiez que les fichiers CSV sont présents dans data/clean/.</div>;
   }
 
   return (
@@ -49,15 +69,27 @@ export default function HomeDashboard() {
             value={propertyType}
             onChange={(e) => setPropertyType(e.target.value)}
             className="bg-slate-900 border-b border-slate-700 text-white text-sm py-1 pr-6 focus:outline-none focus:border-brand-green">
-            <option value="Maison">Maison</option>
-            <option value="Appartement">Appartement</option>
+            {options ? options.property_types.map(t => (
+              <option key={t} value={t}>{t}</option>
+            )) : (
+              <>
+                <option value="Tous">Tous</option>
+                <option value="Maison">Maison</option>
+                <option value="Appartement">Appartement</option>
+              </>
+            )}
           </select>
           <select 
             value={region}
             onChange={(e) => setRegion(e.target.value)}
             className="bg-slate-900 border-b border-slate-700 text-white text-sm py-1 pr-6 focus:outline-none focus:border-brand-green">
-            <option value="France entière">France entière</option>
-            <option value="Île-de-France">Île-de-France</option>
+            {options ? options.regions.map(r => (
+              <option key={r} value={r}>{r}</option>
+            )) : (
+              <>
+                <option value="France entière">France entière</option>
+              </>
+            )}
           </select>
         </div>
       </div>
@@ -66,14 +98,14 @@ export default function HomeDashboard() {
       <div className="grid grid-cols-4 gap-8">
         <div>
           <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2 font-sans">Prix Médian</h2>
-          <div className="text-3xl font-medium text-white mb-1">{data.kpis.median_price} €/m²</div>
+          <div className="text-3xl font-medium text-white mb-1">{data.kpis.median_price} €</div>
           <div className="text-sm text-brand-green flex items-center">
             ↑ {data.kpis.trend_1yr} sur 1 an
           </div>
         </div>
         <div>
           <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2 font-sans">Prédiction 6 Mois</h2>
-          <div className="text-3xl font-medium text-white mb-1">{data.kpis.pred_6mo} €/m²</div>
+          <div className="text-3xl font-medium text-white mb-1">{data.kpis.pred_6mo} €</div>
           <div className="text-sm text-brand-purple flex items-center">
             ↑ {data.kpis.pred_6mo_pct} prédit
           </div>
@@ -87,9 +119,9 @@ export default function HomeDashboard() {
         </div>
         <div>
           <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2 font-sans">Précision Modèle</h2>
-          <div className="text-3xl font-medium text-white mb-1">91.3%</div>
+          <div className="text-3xl font-medium text-white mb-1">{data.kpis.r2_pct ?? "76.8"}%</div>
           <div className="text-sm text-brand-green flex items-center">
-            MAE : {data.kpis.mae} €/m²
+            MAE : {data.kpis.mae} €
           </div>
         </div>
       </div>
@@ -99,31 +131,28 @@ export default function HomeDashboard() {
         {/* Chart */}
         <div className="lg:col-span-2 space-y-4">
           <div className="flex justify-between items-center">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 font-sans">Évolution des prix — Historique + Prévision</h2>
-            <div className="flex items-center gap-4 text-xs font-medium">
-              <div className="flex items-center gap-2 text-slate-300">
-                <div className="w-4 h-0.5 bg-brand-green"></div>
-                Historique
-              </div>
-              <div className="flex items-center gap-2 text-slate-300">
-                <div className="w-4 h-0.5 bg-brand-purple border-t border-dashed border-brand-purple"></div>
-                Prévision
-              </div>
+            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 font-sans">Distribution des prix — Mars 2026</h2>
+            <div className="flex items-center gap-2 text-xs text-slate-400 font-medium">
+              <span>Nombre d&apos;annonces par tranche</span>
             </div>
           </div>
           
           <div className="h-[300px] w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={data.chart_data} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
+              <BarChart data={data.chart_data} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" />
-                <XAxis dataKey="month" stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} />
-                <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} domain={['dataMin - 50', 'dataMax + 50']} tickFormatter={(v) => `${v}€`} />
+                <XAxis dataKey="bracket" stroke="#94a3b8" fontSize={10} tickLine={false} axisLine={false} angle={-20} textAnchor="end" height={50} />
+                <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} />
                 <Tooltip 
                   contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '4px', color: '#f8fafc' }}
+                  formatter={(value: any) => [`${value} annonces`, 'Nombre']}
                 />
-                <Line type="monotone" dataKey="price" stroke="#10b981" strokeWidth={2} dot={false} activeDot={{ r: 4, fill: '#10b981' }} />
-                <Line type="monotone" dataKey="predictedPrice" stroke="#8b5cf6" strokeDasharray="5 5" strokeWidth={2} dot={false} />
-              </LineChart>
+                <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                  {data.chart_data.map((_: any, index: number) => (
+                    <Cell key={`cell-${index}`} fill="#10b981" fillOpacity={0.8} />
+                  ))}
+                </Bar>
+              </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
@@ -131,8 +160,8 @@ export default function HomeDashboard() {
         {/* Alerts */}
         <div className="space-y-4">
           <div className="flex justify-between items-center mb-6">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 font-sans">Alertes Investissement</h2>
-            <span className="text-xs font-medium text-brand-purple bg-brand-purple/10 border border-brand-purple/20 px-2 py-0.5 rounded">3 nouvelles</span>
+            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 font-sans">Alertes & Insights</h2>
+            <span className="text-xs font-medium text-brand-purple bg-brand-purple/10 border border-brand-purple/20 px-2 py-0.5 rounded">XGBoost</span>
           </div>
 
           <div className="space-y-3">
@@ -166,7 +195,7 @@ export default function HomeDashboard() {
               <div key={idx} className="flex flex-col h-full bg-slate-900 border border-slate-800 rounded p-5 relative overflow-hidden">
                 <div className="flex justify-between items-start mb-6">
                   <span className={`text-xs font-medium text-${themeClass} bg-${themeClass}/10 border border-${themeClass}/20 px-2 py-0.5 rounded`}>{market.type}</span>
-                  <span className={`text-xs font-medium text-brand-${market.color_theme === "red" ? "red" : "purple"} bg-brand-${market.color_theme === "red" ? "red" : "purple"}/10 px-2 py-0.5 rounded`}>{market.change_per_year}</span>
+                  <span className={`text-xs font-medium text-brand-purple bg-brand-purple/10 px-2 py-0.5 rounded`}>{market.change_per_year}</span>
                 </div>
                 <div className="flex justify-center mb-6">
                   <IconComponent className="h-8 w-8 text-slate-500" />

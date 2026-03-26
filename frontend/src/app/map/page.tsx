@@ -18,7 +18,8 @@ const MapClient = dynamic(() => import("@/components/ui/MapClient"), {
 interface Alert {
   zone: string;
   current_price: number;
-  predicted_growth_1yr_pct: number;
+  count: number;
+  vs_median_pct: number;
 }
 
 export default function MapPage() {
@@ -48,27 +49,49 @@ export default function MapPage() {
         <div className="space-y-4">
           <h3 className="font-semibold text-white flex items-center gap-2">
             <TrendingUp className="h-5 w-5 text-brand-green" />
-            Top Alertes IA
+            Top Marchés Actifs
           </h3>
           
           <div className="space-y-4">
-            {alerts.length > 0 ? alerts.map((alert, idx) => (
-              <div key={idx} className="rounded-xl border border-brand-green/30 bg-brand-green/10 p-4">
-                <div className="flex justify-between items-start mb-2">
-                  <h4 className="font-bold text-white flex items-center gap-2">
-                    <MapPin className="h-4 w-4 text-brand-green" />
-                    {alert.zone}
-                  </h4>
-                  <span className="bg-brand-green/20 text-brand-green text-xs font-bold px-2 py-1 rounded">
-                    +{alert.predicted_growth_1yr_pct.toFixed(1)}%
-                  </span>
+            {alerts.length > 0 ? alerts.map((alert, idx) => {
+              const isAbove = alert.vs_median_pct > 0;
+              return (
+                <div key={idx} className={`rounded-xl border p-4 ${isAbove ? 'border-red-500/30 bg-red-500/10' : 'border-brand-green/30 bg-brand-green/10'}`}>
+                  <div className="flex justify-between items-start mb-2">
+                    <h4 className="font-bold text-white flex items-center gap-2">
+                      <MapPin className="h-4 w-4 text-brand-green" />
+                      {alert.zone}
+                    </h4>
+                    <span className={`text-xs font-bold px-2 py-1 rounded ${isAbove ? 'bg-red-500/20 text-red-400' : 'bg-brand-green/20 text-brand-green'}`}>
+                      {isAbove ? '+' : ''}{alert.vs_median_pct}% vs médiane
+                    </span>
+                  </div>
+                  <p className="text-sm text-slate-300">{alert.current_price.toLocaleString()} €/m²</p>
+                  <p className="text-xs text-muted mt-2">{alert.count} annonces analysées</p>
                 </div>
-                <p className="text-sm text-slate-300">Prix actuel: {alert.current_price} €/m²</p>
-                <p className="text-xs text-muted mt-2">Croissance estimée sur 1 an. Signal fort.</p>
-              </div>
-            )) : (
+              );
+            }) : (
               <p className="text-muted text-sm">Chargement des alertes...</p>
             )}
+          </div>
+
+          {/* Legend */}
+          <div className="pt-4 border-t border-slate-800">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">Légende carte</h4>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-xs">
+                <div className="w-3 h-3 rounded-full bg-[#10b981]"></div>
+                <span className="text-slate-400">Abordable (tiers inférieur)</span>
+              </div>
+              <div className="flex items-center gap-2 text-xs">
+                <div className="w-3 h-3 rounded-full bg-[#eab308]"></div>
+                <span className="text-slate-400">Intermédiaire</span>
+              </div>
+              <div className="flex items-center gap-2 text-xs">
+                <div className="w-3 h-3 rounded-full bg-[#ef4444]"></div>
+                <span className="text-slate-400">Élevé (tiers supérieur)</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>

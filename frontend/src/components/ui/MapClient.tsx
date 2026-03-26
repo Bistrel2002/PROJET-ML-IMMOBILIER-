@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { API_BASE_URL } from "@/lib/constants";
-import { MapContainer, TileLayer, CircleMarker, Popup } from "react-leaflet";
+import { MapContainer, TileLayer, CircleMarker, Tooltip } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 
 interface MapDataPoint {
@@ -10,12 +10,26 @@ interface MapDataPoint {
   lat: number;
   lng: number;
   weight: number;
+  price_m2: number;
   city: string;
   price: string;
   trend: string;
-  confidence: number;
+  tier: "cheap" | "mid" | "expensive";
+  count: number;
   active: boolean;
 }
+
+const TIER_COLORS = {
+  cheap: "#10b981",     // green
+  mid: "#eab308",       // yellow
+  expensive: "#ef4444", // red
+};
+
+const TIER_LABELS = {
+  cheap: "Abordable",
+  mid: "Intermédiaire",
+  expensive: "Élevé",
+};
 
 export default function MapClient() {
   const [points, setPoints] = useState<MapDataPoint[]>([]);
@@ -29,10 +43,10 @@ export default function MapClient() {
 
   return (
     <MapContainer 
-      center={[46.603354, 1.888334]} // Center of France
+      center={[46.603354, 1.888334]}
       zoom={6} 
       className="h-full w-full"
-      style={{ background: '#0f172a' }} // Dark slate background to match theme
+      style={{ background: '#0f172a' }}
     >
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
@@ -40,10 +54,8 @@ export default function MapClient() {
       />
       
       {points.map((pt) => {
-        // dynamic styling based on trend and activity
-        const isPositive = pt.trend.startsWith('+');
-        const color = isPositive ? '#10b981' : '#ef4444'; // brand-green or brand-red
-        const radius = Math.max(8, Math.min(25, pt.weight / 500)); 
+        const color = TIER_COLORS[pt.tier] || "#10b981";
+        const radius = Math.max(8, Math.min(22, pt.weight / 400)); 
 
         return (
           <CircleMarker
@@ -53,38 +65,50 @@ export default function MapClient() {
             pathOptions={{
               color: color, 
               fillColor: color,
-              fillOpacity: 0.6,
+              fillOpacity: 0.5,
               weight: 2
             }}
+            eventHandlers={{
+              mouseover: (e) => { e.target.setStyle({ fillOpacity: 0.9, weight: 3 }); },
+              mouseout: (e) => { e.target.setStyle({ fillOpacity: 0.5, weight: 2 }); },
+            }}
           >
-            <Popup closeButton={false} autoPan={true}>
-              <div className="bg-slate-900 p-4 rounded-lg min-w-[200px]">
-                <div className="flex justify-between items-start mb-3">
-                  <span className="font-bold text-white text-lg">{pt.city}</span>
-                  <span className={`text-xs px-2 py-1 rounded font-bold tracking-wider ${isPositive ? 'bg-brand-green/20 text-brand-green' : 'bg-brand-red/20 text-brand-red'}`}>
-                    {pt.trend}
+            <Tooltip 
+              direction="top" 
+              offset={[0, -10]} 
+              opacity={1}
+              className="custom-tooltip"
+            >
+              <div style={{ 
+                backgroundColor: '#0f172a', 
+                border: `1px solid ${color}40`,
+                borderRadius: '8px', 
+                padding: '10px 14px',
+                minWidth: '180px',
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <span style={{ color: '#f8fafc', fontWeight: 700, fontSize: '14px' }}>
+                    {pt.city}
+                  </span>
+                  <span style={{ 
+                    color: color, 
+                    fontSize: '10px', 
+                    fontWeight: 600, 
+                    backgroundColor: `${color}20`,
+                    padding: '2px 6px',
+                    borderRadius: '4px',
+                  }}>
+                    {TIER_LABELS[pt.tier]}
                   </span>
                 </div>
-                
-                <div className="mb-4">
-                  <div className="text-sm text-slate-400 font-sans mb-1">Prix moyen estimé</div>
-                  <div className="text-2xl font-bold text-white">{pt.price} <span className="text-sm text-slate-500 font-normal">€/m²</span></div>
+                <div style={{ color: color, fontSize: '20px', fontWeight: 700, marginBottom: '4px' }}>
+                  {pt.price} <span style={{ color: '#64748b', fontSize: '12px', fontWeight: 400 }}>€/m²</span>
                 </div>
-                
-                <div className="space-y-1.5 pt-3 border-t border-slate-700/50">
-                  <div className="flex justify-between text-xs font-sans">
-                    <span className="text-slate-400">Précision Modèle</span>
-                    <span className="text-white font-medium">{pt.confidence}%</span>
-                  </div>
-                  <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                    <div className="bg-brand-blue h-full rounded-full" style={{ width: `${pt.confidence}%` }}></div>
-                  </div>
-                  <p className="text-[10px] text-slate-500 mt-2 text-right">
-                    Source: Random Forest
-                  </p>
+                <div style={{ color: '#94a3b8', fontSize: '11px' }}>
+                  {pt.trend}
                 </div>
               </div>
-            </Popup>
+            </Tooltip>
           </CircleMarker>
         );
       })}
