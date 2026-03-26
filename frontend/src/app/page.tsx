@@ -8,9 +8,8 @@ import { ArrowUpRight, Building2, Home as HomeIcon } from "lucide-react";
 interface DashboardData {
   kpis: {
     median_price: string;
-    trend_1yr: string;
-    pred_6mo: string;
-    pred_6mo_pct: string;
+    mean_price: string;
+    prix_m2: string;
     ads_count: string;
     mae: string;
     r2_pct: string;
@@ -99,15 +98,15 @@ export default function HomeDashboard() {
         <div>
           <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2 font-sans">Prix Médian</h2>
           <div className="text-3xl font-medium text-white mb-1">{data.kpis.median_price} €</div>
-          <div className="text-sm text-brand-green flex items-center">
-            ↑ {data.kpis.trend_1yr} sur 1 an
+          <div className="text-sm text-slate-400 flex items-center">
+            Données réelles filtrées
           </div>
         </div>
         <div>
-          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2 font-sans">Prédiction 6 Mois</h2>
-          <div className="text-3xl font-medium text-white mb-1">{data.kpis.pred_6mo} €</div>
-          <div className="text-sm text-brand-purple flex items-center">
-            ↑ {data.kpis.pred_6mo_pct} prédit
+          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2 font-sans">Prix Moyen</h2>
+          <div className="text-3xl font-medium text-white mb-1">{data.kpis.mean_price} €</div>
+          <div className="text-sm text-slate-400 flex items-center">
+            Moyenne arithmétique
           </div>
         </div>
         <div>
