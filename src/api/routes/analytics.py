@@ -3,6 +3,7 @@ from typing import Optional
 from pathlib import Path
 import sys
 import os
+import json
 import pandas as pd
 import numpy as np
 import joblib
@@ -22,7 +23,7 @@ def get_file_lines_count(directory):
             return 0
         with open(csv_files[0], 'r', encoding='utf-8') as f:
             return sum(1 for _ in f) - 1
-    except Exception:
+    except Exception as e:
         return 0
 
 # ─── Load data at startup ─────────────────────────────────────────────
@@ -125,12 +126,22 @@ if xgb_model is not None:
     except Exception as e:
         print(f"⚠️ Could not extract model params: {e}")
 
-# Real model metrics (from training results)
-MODEL_METRICS = {
-    "mae": "57 742",
-    "rmse": "93 085",
-    "r2": "0.7675",
-}
+# Real model metrics — loaded dynamically from training output
+METRICS_PATH = ROOT / "src" / "models" / "metrics.json"
+def _load_model_metrics():
+    try:
+        with open(METRICS_PATH) as f:
+            m = json.load(f)
+        return {
+            "mae": f"{int(round(m['mae'])):,}".replace(",", " "),
+            "rmse": f"{int(round(float(m['rmse']))):,}".replace(",", " "),
+            "r2": str(m["r2"]),
+        }
+    except Exception as e:
+        print(f"⚠️ Could not load metrics.json, using defaults: {e}")
+        return {"mae": "55 657", "rmse": "90 236", "r2": "0.7815"}
+
+MODEL_METRICS = _load_model_metrics()
 
 
 def filter_by_type(df, type_str):
@@ -237,9 +248,8 @@ def get_dashboard_data(type: str = "Tous", region: str = "France entière"):
     return {
         "kpis": {
             "median_price": f"{int(median_price):,}".replace(",", " "),
-            "trend_1yr": "+2.4%",
-            "pred_6mo": f"{int(median_price * 1.023):,}".replace(",", " "),
-            "pred_6mo_pct": "+2.3%",
+            "mean_price": f"{int(df['prix'].mean()):,}".replace(",", " "),
+            "prix_m2": f"{int((df['prix'] / df['surface']).median()):,}".replace(",", " ") if 'surface' in df.columns and (df['surface'] > 0).any() else "N/A",
             "ads_count": f"{ads_count:,}".replace(",", " "),
             "mae": MODEL_METRICS["mae"],
             "r2_pct": r2_pct,
@@ -341,7 +351,7 @@ def get_analysis_data(zone: str = "Toutes villes", type: str = "Tous", smin: Opt
         q50 = int(df["prix"].quantile(0.50))
         q75 = int(df["prix"].quantile(0.75))
         distribution = [
-            {"bracket": f"< {q25:,}€".replace(",", " "), "pct": 25},
+            {"bracket": f"< {q25:,}€".replace(" ", " "), "pct": 25},
             {"bracket": f"{q25:,}–{q50:,}€".replace(",", " "), "pct": 25},
             {"bracket": f"{q50:,}–{q75:,}€".replace(",", " "), "pct": 25},
             {"bracket": f"> {q75:,}€".replace(",", " "), "pct": 25},

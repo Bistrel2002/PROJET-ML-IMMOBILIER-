@@ -1,7 +1,10 @@
 from os import path, listdir
+from pathlib import Path
 import pandas as pd
 
-RAW_DIR = "data/raw/"
+# Compute project root as two levels up from this file (src/features/ -> project root)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+RAW_DIR = str(PROJECT_ROOT / "data" / "raw")
 
 
 def list_raw_files() -> list:
@@ -10,12 +13,9 @@ def list_raw_files() -> list:
     :return: list of csv filenames
     """
     try:
-        raw_path = RAW_DIR
-        if not path.exists(raw_path):
-            raw_path = path.join("..", raw_path)
-        raw_files = listdir(raw_path)
+        raw_files = listdir(RAW_DIR)
     except FileNotFoundError:
-        raise FileNotFoundError("data/raw/ does not exist")
+        raise FileNotFoundError(f"{RAW_DIR} does not exist")
     raw_files = [file for file in raw_files if file[-4:] == ".csv"]
     raw_files.sort(reverse=True)
     return raw_files
@@ -30,9 +30,7 @@ def raw_dataframe(filename: str) -> pd.DataFrame:
     if ".csv" not in filename:
         filename = f"{filename}.csv"
     if RAW_DIR not in filename:
-        filename = path.join("data/raw", filename)
-        if not path.exists(filename):
-            filename = path.join("..", filename)
+        filename = path.join(RAW_DIR, filename)
     if not path.exists(filename):
         raise FileNotFoundError(f"{filename} does not exist")
     df = pd.read_csv(filename, header=0, index_col=0)
