@@ -8,6 +8,7 @@ No feature engineering happens here — that is handled by
 features/feature_engineering.py via the pipeline.
 """
 
+import json
 import numpy as np
 import pandas as pd
 import joblib
@@ -91,7 +92,7 @@ def train_models(df: pd.DataFrame, save_dir: str = None):
         )
 
         reg_model = XGBRegressor(
-            n_estimators=300, learning_rate=0.1, max_depth=7,
+            n_estimators=200, learning_rate=0.1, max_depth=7,
             subsample=0.8, colsample_bytree=0.8, random_state=42
         )
         reg_model.fit(X_reg_train, y_reg_train)
@@ -127,6 +128,19 @@ def train_models(df: pd.DataFrame, save_dir: str = None):
         print(f"\n  ✓ Best model ({best_label}) saved → {model_path.relative_to(ROOT)}")
         results['Best_Regression'] = {'R2': best_r2, 'method': best_label}
         results['model_path'] = str(model_path)
+
+        # Save metrics to JSON for the API to read dynamically
+        best_metrics = reg_metrics if best_label == 'prix_brut' else reg_metrics_log
+        metrics_path = _save_dir / 'metrics.json'
+        metrics_json = {
+            'mae': best_metrics['MAE'],
+            'rmse': best_metrics['RMSE'],
+            'r2': best_metrics['R2'],
+            'method': best_label,
+        }
+        with open(metrics_path, 'w') as f:
+            json.dump(metrics_json, f, indent=2, default=str)
+        print(f"  ✓ Metrics saved → {metrics_path.relative_to(ROOT)}")
 
     # ---------------------------------------------------------
     # Classification : prix au-dessus de la médiane (XGBoost)
