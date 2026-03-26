@@ -2,6 +2,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 import pandas as pd
 import numpy as np
+import json
 import joblib
 from pathlib import Path
 import sys
@@ -10,6 +11,7 @@ import os
 # Pour importer depuis src
 ROOT = Path(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
 sys.path.insert(0, str(ROOT))
+CLEAN_DIR = ROOT / "data" / "clean"
 
 from src.features.data_ingest import load_raw
 from src.features.data_quality import data_quality
@@ -27,32 +29,49 @@ except Exception as e:
     EXPECTED_FEATURES = []
     print(f"⚠️ Erreur de chargement du modèle : {e}")
 
-# --- Préparation du Dictionnaire de Target Encoding pour les Villes ---
-# On recalcule le dictionnaire au démarrage pour faire la correspondance Ville (Texte) -> Valeur numérique
+# --- Load metrics dynamically from training output ---
+def _load_r2():
+    try:
+        with open(ROOT / "src" / "models" / "metrics.json") as f:
+            return float(json.load(f)["r2"])
+    except Exception:
+        return 0.78
+
+MODEL_R2 = _load_r2()
+
+# --- Load city encoding from the SAME pickle used during training ---
+# This ensures the API uses identical encoding values to what the model was trained on.
 city_encoding_dict = {}
 global_mean_price = 0
 
 def init_city_encoding():
     global city_encoding_dict, global_mean_price
     try:
-        df_raw = load_raw()
-        df_qual = data_quality(df_raw)
-        df_clean = clean_leboncoin_data(df_qual)
-        
-        if 'prix' in df_clean.columns and 'ville' in df_clean.columns:
-            df = df_clean.dropna(subset=['prix', 'ville'])
-            global_mean_price = df['prix'].mean()
-            smoothing = 20 # Correspond au paramètre actuel dans feature_engineering.py
-            
-            city_stats = df.groupby('ville')['prix'].agg(['mean', 'count'])
-            city_stats['smoothed'] = (
-                (city_stats['count'] * city_stats['mean'] + smoothing * global_mean_price)
-                / (city_stats['count'] + smoothing)
-            )
-            city_encoding_dict = city_stats['smoothed'].to_dict()
-            print("✓ Target Encoding des villes initialisé pour l'API.")
+        from pickle import load as pkl_load
+        encoding_path = ROOT / "saved_models" / "city_encoding.pickle"
+        with open(encoding_path, "rb") as f:
+            city_series = pkl_load(f)
+        city_encoding_dict = city_series.to_dict()
+        global_mean_price = float(city_series.mean())
+        print(f"✓ City encoding loaded from {encoding_path} ({len(city_encoding_dict)} cities)")
     except Exception as e:
-        print(f"⚠️ Erreur lors de l'initialisation de l'encodage des villes : {e}")
+        print(f"⚠️ Could not load city_encoding.pickle, falling back to recomputation: {e}")
+        try:
+            df_raw = load_raw()
+            df_qual = data_quality(df_raw)
+            df_clean = clean_leboncoin_data(df_qual)
+            if 'prix' in df_clean.columns and 'ville' in df_clean.columns:
+                df = df_clean.dropna(subset=['prix', 'ville'])
+                global_mean_price = df['prix'].mean()
+                smoothing = 20
+                city_stats = df.groupby('ville')['prix'].agg(['mean', 'count'])
+                city_stats['smoothed'] = (
+                    (city_stats['count'] * city_stats['mean'] + smoothing * global_mean_price)
+                    / (city_stats['count'] + smoothing)
+                )
+                city_encoding_dict = city_stats['smoothed'].to_dict()
+        except Exception as e2:
+            print(f"⚠️ Fallback recomputation also failed: {e2}")
 
 # Initialiser l'encodage au lancement
 init_city_encoding()
@@ -119,15 +138,44 @@ def simulate_price(features: PropertyFeatures):
     type_bien_clean = features.property_type.strip().upper()
     
     # 4. Construction du dictionnaire des features pour le modèle
-    input_dict = {
-        'surface': features.surface_area,
-        'pieces': float(features.rooms) if features.rooms > 0 else 1.0,
-        'ville': encoded_city,
+    #    Includes ALL features the model was trained on:
+    #    surface, pieces, ville, surface_log, type_bien_*, cluster
+    surface_val = features.surface_area
+    pieces_val = float(features.rooms) if features.rooms > 0 else 1.0
+    surface_log_val = float(np.log1p(surface_val))
+
+    type_flags = {
         'type_bien_APPARTEMENT': 1 if type_bien_clean == 'APPARTEMENT' else 0,
         'type_bien_AUTRE': 1 if type_bien_clean == 'AUTRE' else 0,
         'type_bien_MAISON': 1 if type_bien_clean == 'MAISON' else 0,
         'type_bien_PARKING': 1 if type_bien_clean == 'PARKING' else 0,
         'type_bien_TERRAIN': 1 if type_bien_clean == 'TERRAIN' else 0,
+    }
+
+    # Predict cluster using the saved KMeans model
+    cluster_val = 0
+    try:
+        from pickle import load as pkl_load
+        kmeans_path = ROOT / "saved_models" / "kmeans.pickle"
+        with open(kmeans_path, "rb") as f:
+            km = pkl_load(f)
+        cluster_features = {col: type_flags.get(col, 0) for col in km.feature_names_in_}
+        if "surface_log" in km.feature_names_in_:
+            cluster_features["surface_log"] = surface_log_val
+        if "pieces" in km.feature_names_in_:
+            cluster_features["pieces"] = pieces_val
+        cluster_df = pd.DataFrame([cluster_features], columns=km.feature_names_in_)
+        cluster_val = int(km.predict(cluster_df)[0])
+    except Exception as e:
+        print(f"⚠️ Could not predict cluster, defaulting to 0: {e}")
+
+    input_dict = {
+        'surface': surface_val,
+        'pieces': pieces_val,
+        'ville': encoded_city,
+        'surface_log': surface_log_val,
+        'cluster': cluster_val,
+        **type_flags,
     }
     
     # S'assurer que les colonnes sont exactement dans l'ordre attendu par XGBoost
@@ -141,8 +189,8 @@ def simulate_price(features: PropertyFeatures):
     
     final_price = estimated_price
 
-    # Confiance basée sur le R² réel du modèle
-    confidence = 76.8  # R² = 0.7675
+    # Confiance basée sur le R² réel du modèle (chargé dynamiquement)
+    confidence = round(MODEL_R2 * 100, 1)
 
     # Projections basées sur le taux moyen annuel de l'immobilier français (INSEE ~3.5%/an)
     annual_rate = 0.035
@@ -163,6 +211,6 @@ def simulate_price(features: PropertyFeatures):
             { "period": "1 an", "price": projections[1]["price"] },
             { "period": "2 ans", "price": projections[2]["price"] },
         ],
-        "disclaimer": "Projections basées sur le taux moyen annuel de l'immobilier français (~3.5%/an, source INSEE). Le modèle XGBoost prédit le prix actuel (R²=0.7675), pas l'évolution future."
+        "disclaimer": f"Projections basées sur le taux moyen annuel de l'immobilier français (~3.5%/an, source INSEE). Le modèle XGBoost prédit le prix actuel (R²={MODEL_R2}), pas l'évolution future."
     }
 

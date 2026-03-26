@@ -13,12 +13,17 @@ Output : ML-ready DataFrame with only numeric columns
 
 import numpy as np
 import pandas as pd
+from pathlib import Path
+from os import makedirs
 from sklearn.cluster import KMeans
 from pickle import dump, load
 
-MODEL_DIR = "saved_models/"
-CITY_ENCODING_FILE = f"{MODEL_DIR}city_encoding.pickle"
-KMEANS_FILE = f"{MODEL_DIR}kmeans.pickle"
+# Compute project root as two levels up from this file (src/features/ -> project root)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+MODEL_DIR = str(PROJECT_ROOT / "saved_models")
+CITY_ENCODING_FILE = str(Path(MODEL_DIR) / "city_encoding.pickle")
+KMEANS_FILE = str(Path(MODEL_DIR) / "kmeans.pickle")
+makedirs(MODEL_DIR, exist_ok=True)
 
 
 # =====================================================================
