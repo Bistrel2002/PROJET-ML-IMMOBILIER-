@@ -1,0 +1,17 @@
+# Python cache
+__pycache__/
+
+# Python venv
+.venv/
+
+# PyCharm
+.idea/
+
+# Database and intermediate files
+*.db
+
+# Local scripts
+enrich_raw_csv.py
+src/data/enrich_raw_csv.py
+test.ipynb
+
