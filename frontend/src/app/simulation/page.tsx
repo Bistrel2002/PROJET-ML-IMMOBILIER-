@@ -31,10 +31,15 @@ export default function SimulationPage() {
   const [result, setResult] = useState<SimulationResult | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const [error, setError] = useState<string | null>(null);
+
   // Load options on mount
   useEffect(() => {
     fetch(`${API_BASE_URL}/api/predict/options`)
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) throw new Error(`Erreur serveur (${res.status})`);
+        return res.json();
+      })
       .then((opts) => {
         setOptions(opts);
         // Set default city to first available
@@ -42,22 +47,28 @@ export default function SimulationPage() {
           setFormData(prev => ({ ...prev, city: opts.cities[0] }));
         }
       })
-      .catch(console.error);
+      .catch(err => setError(err.message || "Impossible de charger les options"));
   }, []);
 
   const handleSimulate = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setError(null);
     try {
       const res = await fetch(`${API_BASE_URL}/api/predict/simulate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData)
       });
+      if (!res.ok) throw new Error(`Erreur serveur (${res.status})`);
       const data = await res.json();
-      setResult(data);
-    } catch (err) {
-      console.error(err);
+      if (data.error) {
+        setError(data.error);
+      } else {
+        setResult(data);
+      }
+    } catch (err: any) {
+      setError(err.message || "Erreur lors de la simulation");
     } finally {
       setLoading(false);
     }
@@ -145,9 +156,10 @@ export default function SimulationPage() {
             </div>
             
             <div className="pt-2">
-              <button disabled={loading} type="submit" className="w-full bg-brand-green hover:bg-emerald-600 text-white font-medium py-3 rounded transition-colors text-sm disabled:opacity-50">
+              <button disabled={loading} type="submit" className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-medium py-3 rounded transition-colors text-sm disabled:opacity-50">
                 {loading ? "Calcul en cours..." : "Lancer la prédiction"}
               </button>
+              {error && <p className="text-red-400 text-sm mt-3">{error}</p>}
             </div>
           </form>
         </div>

@@ -30,11 +30,17 @@ class TestTrainEvaluate(unittest.TestCase):
             "pieces": np.random.randint(1, 10, n_samples),
             "ville": np.random.uniform(100000, 500000, n_samples), 
             "prix_log": np.random.uniform(10, 15, n_samples),
+            "surface_log": np.random.uniform(3, 6, n_samples),
+            "annee": np.random.choice([2022, 2023, 2024, 2025], n_samples),
+            "mois": np.random.randint(1, 13, n_samples),
+            "trimestre": np.random.randint(1, 5, n_samples),
+            "annee_mois": np.random.uniform(2022.08, 2025.5, n_samples),
             "type_bien_APPARTEMENT": np.random.choice([True, False], n_samples),
             "type_bien_MAISON": np.random.choice([True, False], n_samples),
             "type_bien_PARKING": np.random.choice([False], n_samples),
             "type_bien_TERRAIN": np.random.choice([False], n_samples),
             "type_bien_AUTRE": np.random.choice([False], n_samples),
+            "cluster": np.random.randint(0, 8, n_samples),
         })
         
         # Utiliser un chemin absolu pour éviter les erreurs de relative_to

@@ -38,13 +38,15 @@ def ingest_data(csv_file=None, db_name=DB_PATH):
     df = pd.read_csv(csv_file)
     
     # Forcer le zipcode en string pour éviter les erreurs de type (ex: 07200 vs 7200)
-    df['zipcode'] = df['zipcode'].astype(str).str.zfill(5)
+    if 'zipcode' in df.columns:
+        df['zipcode'] = df['zipcode'].astype(str).str.zfill(5)
     
     # Prétraitement de la date
-    df['created_at'] = pd.to_datetime(df['created_at'])
-    df['year'] = df['created_at'].dt.year
-    df['month'] = df['created_at'].dt.month
-    df['day'] = df['created_at'].dt.day
+    if 'created_at' in df.columns:
+        df['created_at'] = pd.to_datetime(df['created_at'])
+        df['year'] = df['created_at'].dt.year
+        df['month'] = df['created_at'].dt.month
+        df['day'] = df['created_at'].dt.day
 
     # 2. Connexion à la base de données
     conn = sqlite3.connect(db_name)

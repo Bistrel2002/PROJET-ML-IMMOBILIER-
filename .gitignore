@@ -1,5 +1,6 @@
 # Python cache
 __pycache__/
+*.pyc
 
 # Python venv
 .venv/
@@ -15,3 +16,19 @@ enrich_raw_csv.py
 src/data/enrich_raw_csv.py
 test.ipynb
 
+# Data files (too large for git)
+data/raw/*.csv
+data/clean/*.csv
+data/clean/*.joblib
+.cache/
+
+# Saved models
+saved_models/*.pickle
+saved_models/*.joblib
+
+# Frontend
+frontend/node_modules/
+frontend/.next/
+
+# OS files
+.DS_Store

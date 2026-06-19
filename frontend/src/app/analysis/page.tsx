@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { API_BASE_URL } from "@/lib/constants";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -21,9 +21,20 @@ interface AnalysisOptions {
   rooms: string[];
 }
 
+// B9: Debounce hook to prevent API spam on text input
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+  useEffect(() => {
+    const handler = setTimeout(() => setDebouncedValue(value), delay);
+    return () => clearTimeout(handler);
+  }, [value, delay]);
+  return debouncedValue;
+}
+
 export default function AnalysisPage() {
   const [data, setData] = useState<AnalysisData | null>(null);
   const [options, setOptions] = useState<AnalysisOptions | null>(null);
+  const [error, setError] = useState<string | null>(null);
   
   // Filter states
   const [zone, setZone] = useState("Toutes villes");
@@ -32,45 +43,67 @@ export default function AnalysisPage() {
   const [surfaceMax, setSurfaceMax] = useState("");
   const [rooms, setRooms] = useState("Toutes pièces");
 
+  // B9: Debounce surface inputs (300ms) to avoid firing on every keystroke
+  const debouncedSurfaceMin = useDebounce(surfaceMin, 300);
+  const debouncedSurfaceMax = useDebounce(surfaceMax, 300);
+
   // Load options once
   useEffect(() => {
     fetch(`${API_BASE_URL}/api/analytics/analysis/options`)
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) throw new Error(`Erreur serveur (${res.status})`);
+        return res.json();
+      })
       .then(setOptions)
-      .catch(console.error);
+      .catch(err => console.error("Options fetch error:", err));
   }, []);
 
+  // B9: Use debounced values for surface filters
   useEffect(() => {
+    setError(null);
     const params = new URLSearchParams({
       zone,
       type: propertyType,
-      smin: surfaceMin,
-      smax: surfaceMax,
+      smin: debouncedSurfaceMin,
+      smax: debouncedSurfaceMax,
       rooms
     });
 
     fetch(`${API_BASE_URL}/api/analytics/analysis?${params.toString()}`)
-      .then(res => res.json())
-      .then(setData)
-      .catch(console.error);
-  }, [zone, propertyType, surfaceMin, surfaceMax, rooms]);
+      .then(res => {
+        if (!res.ok) throw new Error(`Erreur serveur (${res.status})`);
+        return res.json();
+      })
+      .then(d => {
+        if (d.error) {
+          setError(d.error);
+          setData(null);
+        } else {
+          setData(d);
+        }
+      })
+      .catch(err => {
+        setError(err.message || "Impossible de contacter le serveur");
+        setData(null);
+      });
+  }, [zone, propertyType, debouncedSurfaceMin, debouncedSurfaceMax, rooms]);
 
-  if (!data) {
-    return <div className="flex h-full items-center justify-center text-slate-400">Chargement de l&apos;analyse...</div>;
-  }
-
-  if (data && 'error' in data) {
+  if (error && !data) {
     return (
       <div className="flex h-full items-center justify-center gap-4">
         <button 
           onClick={() => { setZone("Toutes villes"); setPropertyType("Tous"); setSurfaceMin(""); setSurfaceMax(""); setRooms("Toutes pièces"); }}
-          className="px-4 py-2 bg-brand-green/20 border border-brand-green/30 text-brand-green text-sm rounded hover:bg-brand-green/30 transition-colors"
+          className="px-4 py-2 bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-sm rounded hover:bg-emerald-500/30 transition-colors"
         >
           ← Réinitialiser les filtres
         </button>
-        <span className="text-red-400">{(data as any).error}</span>
+        <span className="text-red-400">{error}</span>
       </div>
     );
+  }
+
+  if (!data) {
+    return <div className="flex h-full items-center justify-center text-slate-400">Chargement de l&apos;analyse...</div>;
   }
 
   return (
@@ -81,13 +114,13 @@ export default function AnalysisPage() {
         <h1 className="text-2xl font-serif font-medium text-white mb-1">Analyse détaillée</h1>
         <p className="text-sm text-slate-400 mb-8">
           Comprendre les facteurs de variation des prix
-          {data.stats && <span className="ml-2 text-brand-green">— {data.stats.count} biens analysés</span>}
+          {data.stats && <span className="ml-2 text-emerald-400">— {data.stats.count} biens analysés</span>}
         </p>
         
         <div className="flex flex-wrap gap-4">
           <select 
             value={zone} onChange={(e) => setZone(e.target.value)}
-            className="bg-slate-900 border border-slate-700 text-white text-sm rounded px-4 py-2 hover:border-slate-500 focus:outline-none focus:border-brand-green transition-colors">
+            className="bg-slate-900 border border-slate-700 text-white text-sm rounded px-4 py-2 hover:border-slate-500 focus:outline-none focus:border-emerald-500 transition-colors">
             {options ? options.cities.map(c => (
               <option key={c} value={c}>{c}</option>
             )) : (
@@ -96,7 +129,7 @@ export default function AnalysisPage() {
           </select>
           <select 
             value={propertyType} onChange={(e) => setPropertyType(e.target.value)}
-            className="bg-slate-900 border border-slate-700 text-white text-sm rounded px-4 py-2 hover:border-slate-500 focus:outline-none focus:border-brand-green transition-colors">
+            className="bg-slate-900 border border-slate-700 text-white text-sm rounded px-4 py-2 hover:border-slate-500 focus:outline-none focus:border-emerald-500 transition-colors">
             {options ? options.property_types.map(t => (
               <option key={t} value={t}>{t}</option>
             )) : (
@@ -111,17 +144,17 @@ export default function AnalysisPage() {
             type="number" 
             value={surfaceMin} onChange={(e) => setSurfaceMin(e.target.value)}
             placeholder="Surface min m²" 
-            className="bg-slate-900 border border-slate-700 text-white text-sm rounded px-4 py-2 hover:border-slate-500 focus:outline-none focus:border-brand-green transition-colors w-32" 
+            className="bg-slate-900 border border-slate-700 text-white text-sm rounded px-4 py-2 hover:border-slate-500 focus:outline-none focus:border-emerald-500 transition-colors w-32" 
           />
           <input 
             type="number" 
             value={surfaceMax} onChange={(e) => setSurfaceMax(e.target.value)}
             placeholder="Surface max m²" 
-            className="bg-slate-900 border border-slate-700 text-white text-sm rounded px-4 py-2 hover:border-slate-500 focus:outline-none focus:border-brand-green transition-colors w-32" 
+            className="bg-slate-900 border border-slate-700 text-white text-sm rounded px-4 py-2 hover:border-slate-500 focus:outline-none focus:border-emerald-500 transition-colors w-32" 
           />
           <select 
             value={rooms} onChange={(e) => setRooms(e.target.value)}
-            className="bg-slate-900 border border-slate-700 text-white text-sm rounded px-4 py-2 hover:border-slate-500 focus:outline-none focus:border-brand-green transition-colors">
+            className="bg-slate-900 border border-slate-700 text-white text-sm rounded px-4 py-2 hover:border-slate-500 focus:outline-none focus:border-emerald-500 transition-colors">
             {options ? options.rooms.map(r => (
               <option key={r} value={r}>{r}</option>
             )) : (
@@ -142,7 +175,7 @@ export default function AnalysisPage() {
         {/* Main Chart — Per-type stats */}
         <div className="space-y-4">
           <div className="flex justify-between items-center">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 font-sans">Prix médian par type de bien — Mars 2026</h2>
+            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 font-sans">Prix médian par type de bien — Historique Global</h2>
             <div className="flex items-center gap-2 text-xs text-slate-400 font-medium">
               <span>Données réelles</span>
             </div>
@@ -201,7 +234,7 @@ export default function AnalysisPage() {
         <div>
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 font-sans">Facteurs influents — Importance des features</h2>
-            <span className="text-xs text-brand-purple bg-brand-purple/10 px-2 py-0.5 rounded font-medium border border-brand-purple/20">XGBoost</span>
+            <span className="text-xs text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded font-medium border border-purple-500/20">XGBoost</span>
           </div>
           
           <div className="space-y-5">
@@ -212,7 +245,7 @@ export default function AnalysisPage() {
                 </div>
                 <div className="w-1/2 flex items-center pr-4">
                   <div 
-                    className="h-2 rounded-full bg-brand-purple" 
+                    className="h-2 rounded-full bg-purple-500" 
                     style={{ width: `${feat.pct}%` }}
                   />
                 </div>

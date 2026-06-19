@@ -25,11 +25,20 @@ interface Alert {
 export default function MapPage() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
 
+  const [error, setError] = useState<string | null>(null);
+
   useEffect(() => {
     fetch(`${API_BASE_URL}/api/analytics/invest-alerts`)
-      .then(res => res.json())
-      .then(setAlerts)
-      .catch(console.error);
+      .then(res => {
+        if (!res.ok) throw new Error(`Erreur serveur (${res.status})`);
+        return res.json();
+      })
+      .then(data => {
+        if (Array.isArray(data)) {
+          setAlerts(data);
+        }
+      })
+      .catch(err => setError(err.message || "Impossible de charger les alertes"));
   }, []);
 
   return (

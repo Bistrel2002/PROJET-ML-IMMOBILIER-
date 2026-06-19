@@ -11,7 +11,8 @@ from src.features.feature_engineering import (
     remove_outliers, 
     target_encode_ville,
     encode_ville,
-    add_derived_features, 
+    add_derived_features,
+    add_temporal_features,
     drop_non_features, 
     encode_categoricals,
     train_clustering,
@@ -32,7 +33,10 @@ def make_clean_df():
             "Studio calme", 
             "Maison à rénover",
             "Appartement neuf"
-        ]
+        ],
+        "created_at": pd.to_datetime([
+            "2022-03-15", "2023-06-20", "2024-01-10", "2024-09-05", "2025-04-18"
+        ]),
     })
 
 class TestFeatureEngineering(unittest.TestCase):
@@ -52,6 +56,20 @@ class TestFeatureEngineering(unittest.TestCase):
         
         self.assertIn("prix_log", result.columns)
         self.assertTrue(pd.api.types.is_numeric_dtype(result["prix_log"]))
+
+    def test_add_temporal_features(self):
+        df = make_clean_df()
+        result = add_temporal_features(df)
+
+        self.assertIn("annee", result.columns)
+        self.assertIn("mois", result.columns)
+        self.assertIn("trimestre", result.columns)
+        self.assertIn("annee_mois", result.columns)
+        # Verify first row: 2022-03-15 -> annee=2022, mois=3, trimestre=1
+        self.assertEqual(result["annee"].iloc[0], 2022)
+        self.assertEqual(result["mois"].iloc[0], 3)
+        self.assertEqual(result["trimestre"].iloc[0], 1)
+        self.assertAlmostEqual(result["annee_mois"].iloc[0], 2022 + 3/12.0)
 
     def test_target_encode_ville(self):
         df = make_clean_df()

@@ -1,6 +1,7 @@
 # --- Manipulation et nettoyage des données ---
 pandas
 numpy
+pyarrow
 
 # --- Machine Learning & Modélisation ---
 scikit-learn
@@ -27,3 +28,4 @@ pytest
 fastapi[standard]
 uvicorn
 pydantic
+python-dateutil

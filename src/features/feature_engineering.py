@@ -11,12 +11,23 @@ Input  : cleaned DataFrame from data_cleaner.clean_leboncoin_data()
 Output : ML-ready DataFrame with only numeric columns
 """
 
+import os
+import tempfile
+import shutil
 import numpy as np
 import pandas as pd
 from pathlib import Path
 from os import makedirs
 from sklearn.cluster import KMeans
-from pickle import dump, load
+import joblib
+
+def atomic_dump(obj, filename):
+    """Saves an object to a file atomatically."""
+    temp_dir = Path(filename).parent
+    with tempfile.NamedTemporaryFile(dir=temp_dir, delete=False) as tf:
+        joblib.dump(obj, tf.name)
+        temp_name = tf.name
+    shutil.move(temp_name, filename)
 
 # Compute project root as two levels up from this file (src/features/ -> project root)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -49,7 +60,7 @@ def remove_outliers(df: pd.DataFrame, col: str = 'prix',
 # 4b. Target encoding pour 'ville' (haute cardinalité)
 # =====================================================================
 def target_encode_ville(df: pd.DataFrame, target_col: str = 'prix',
-                        smoothing: int = 20) -> pd.DataFrame:
+                        smoothing: int = 50) -> pd.DataFrame:
     """
     Encode la variable 'ville' en utilisant la moyenne lissée.
     Smoothing augmenté à 40 pour plus de stabilité.
@@ -62,21 +73,16 @@ def target_encode_ville(df: pd.DataFrame, target_col: str = 'prix',
         / (city_stats['count'] + smoothing)
     )
     df['ville'] = df['ville'].map(city_stats['smoothed'])
-    with open(CITY_ENCODING_FILE, "wb") as f:
-        dump(city_stats['smoothed'], f)
+    atomic_dump(city_stats['smoothed'], CITY_ENCODING_FILE)
     return df
 
 
 def encode_ville(df: pd.DataFrame) -> pd.DataFrame:
     """
     Encode la variable 'ville' en utilisant l'association générée par target_encode_ville.
-    (à utiliser sur les nouvelles données)
-    :param df: DataFrame pandas
-    :return: DataFrame pandas
     """
     df = df.copy()
-    with open(CITY_ENCODING_FILE, "rb") as f:
-        city_code = load(f)
+    city_code = joblib.load(CITY_ENCODING_FILE)
     df['ville'] = df['ville'].map(lambda city: city_code[city.upper()])
     return df
 
@@ -88,10 +94,34 @@ def add_derived_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     Crée des colonnes dérivées utiles pour la modélisation :
     - prix_log  : log(1 + prix)  — réduit la dispersion
+    - surface_log : log(1 + surface)
     """
     df = df.copy()
     df['prix_log'] = np.log1p(df['prix'])
-    df ['surface_log'] = np.log1p(df['surface'])
+    df['surface_log'] = np.log1p(df['surface'])
+    return df
+
+
+# =====================================================================
+# 4c-bis. Features temporelles
+# =====================================================================
+def add_temporal_features(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Extrait des features temporelles depuis la colonne 'created_at'.
+    - annee       : année de la transaction (int)
+    - mois        : mois (1–12)
+    - trimestre   : trimestre (1–4)
+    - annee_mois  : valeur continue (année + mois/12) pour capturer la tendance
+    """
+    df = df.copy()
+    if 'created_at' not in df.columns:
+        return df
+
+    dt = pd.to_datetime(df['created_at'], errors='coerce')
+    df['annee'] = dt.dt.year
+    df['mois'] = dt.dt.month
+    df['trimestre'] = dt.dt.quarter
+    df['annee_mois'] = dt.dt.year + dt.dt.month / 12.0
     return df
 
 
@@ -102,7 +132,7 @@ def drop_non_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     Supprime les colonnes redondantes ou non-prédictives.
     """
-    cols_to_drop = ['zipcode', 'region', 'agence', 'title']
+    cols_to_drop = ['zipcode', 'region', 'agence', 'title', 'created_at']
     return df.drop(columns=[c for c in cols_to_drop if c in df.columns])
 
 
@@ -114,7 +144,7 @@ def encode_categoricals(df: pd.DataFrame) -> pd.DataFrame:
     One-hot encode les colonnes catégorielles restantes.
     """
     cat_cols = df.select_dtypes(
-        include=['object', 'category', 'str']
+        include=['object', 'category']
     ).columns.tolist()
     if cat_cols:
         df = pd.get_dummies(df, columns=cat_cols, drop_first=False)
@@ -134,9 +164,9 @@ def train_clustering(df: pd.DataFrame, n_cluster: int = 8, cols_used: list = ["s
     """
     km = KMeans(n_clusters=n_cluster)
     df = df.copy()
-    km.fit(df[cols_used])
-    with open(KMEANS_FILE, 'wb') as f:
-        dump(km, f, protocol=5)
+    cluster_data = df[cols_used].fillna(0)
+    km.fit(cluster_data)
+    atomic_dump(km, KMEANS_FILE)
     df["cluster"] = km.labels_
     return df
 
@@ -144,12 +174,9 @@ def train_clustering(df: pd.DataFrame, n_cluster: int = 8, cols_used: list = ["s
 def predict_cluster(df: pd.DataFrame) -> pd.DataFrame:
     """
     Utilise le modèle de clustering sauvegardé pour prédire le cluster de nouvelles données.
-    :param df: DataFrame pandas, les (nouvelles) données à cluster
-    :return: DataFrame pandas, les données fournies avec les clusters dans une colonne supplémentaire (cluster)
     """
     df = df.copy()
-    with open(KMEANS_FILE, 'rb') as f:
-        km: KMeans = load(f)
+    km = joblib.load(KMEANS_FILE)
     labels = km.predict(df[km.feature_names_in_])
     df["cluster"] = labels
     return df
@@ -169,10 +196,14 @@ def engineer_features(df: pd.DataFrame, n_cluster: int = None, cluster_cols: lis
     df = remove_outliers(df)
     df = target_encode_ville(df)
     df = add_derived_features(df)
+    df = add_temporal_features(df)
     df = drop_non_features(df)
     df = encode_categoricals(df)
     if n_cluster and cluster_cols:
         df = train_clustering(df, n_cluster=n_cluster, cols_used=cluster_cols)
     else:
-        df = train_clustering(df)
+        default_cols = ["surface_log", "pieces", "type_bien_APPARTEMENT", "type_bien_MAISON", "type_bien_TERRAIN"]
+        available_cols = [c for c in default_cols if c in df.columns]
+        if available_cols:
+            df = train_clustering(df, cols_used=available_cols)
     return df

@@ -7,6 +7,7 @@ import json
 import pandas as pd
 import numpy as np
 import joblib
+import threading
 
 router = APIRouter()
 
@@ -15,58 +16,91 @@ RAW_DIR = ROOT / "data" / "raw"
 CLEAN_DIR = ROOT / "data" / "clean"
 MODEL_PATH = ROOT / "src" / "models" / "best_regression_model.joblib"
 
-# ─── Utility ───────────────────────────────────────────────────────────
-def get_file_lines_count(directory):
-    try:
-        csv_files = sorted(directory.glob("*.csv"), reverse=True)
-        if not csv_files:
-            return 0
-        with open(csv_files[0], 'r', encoding='utf-8') as f:
-            return sum(1 for _ in f) - 1
-    except Exception as e:
-        return 0
+# ─── Lazy Data Loader ─────────────────────────────────────────────────
+class AnalyticsData:
+    def __init__(self):
+        self._global_df = pd.DataFrame()
+        self._raw_df = pd.DataFrame()
+        self._xgb_model = None
+        self._initialized = False
+        self._lock = threading.RLock()
 
-# ─── Load data at startup ─────────────────────────────────────────────
-def load_latest_clean_data():
-    try:
-        csv_files = sorted(CLEAN_DIR.glob("*.csv"), reverse=True)
-        if not csv_files:
-            return pd.DataFrame()
-        return pd.read_csv(csv_files[0], index_col=0)
-    except Exception as e:
-        print(f"Error loading clean data: {e}")
-        return pd.DataFrame()
+    @property
+    def global_df(self):
+        if not self._initialized: self._initialize()
+        return self._global_df
 
-def load_latest_raw_data():
-    try:
-        csv_files = sorted(RAW_DIR.glob("*.csv"), reverse=True)
-        if not csv_files:
-            return pd.DataFrame()
-        return pd.read_csv(csv_files[0])
-    except Exception as e:
-        print(f"Error loading raw data: {e}")
-        return pd.DataFrame()
+    @property
+    def raw_df(self):
+        if not self._initialized: self._initialize()
+        return self._raw_df
 
-def load_model():
-    try:
-        return joblib.load(MODEL_PATH)
-    except Exception as e:
-        print(f"⚠️ Could not load model for analytics: {e}")
-        return None
+    @property
+    def xgb_model(self):
+        if not self._initialized: self._initialize()
+        return self._xgb_model
 
-global_df = load_latest_clean_data()
-raw_df = load_latest_raw_data()
-xgb_model = load_model()
+    def _initialize(self):
+        with self._lock:
+            if self._initialized: return
+            print("🚀 Initializing Analytics Data (Lazy Loading)...")
+            try:
+                # Check for cached joined data (dedicated folder to avoid uvicorn reload loop)
+                cached_path = ROOT / ".cache" / "analytics_cache.joblib"
+                if cached_path.exists():
+                    print(f"✓ Loading cached joined data from {cached_path.name}...")
+                    self._global_df = joblib.load(cached_path)
+                    print(f"✓ Done ({len(self._global_df)} rows)")
+                    try:
+                        self._xgb_model = joblib.load(MODEL_PATH)
+                        print("✓ Model loaded")
+                    except: pass
+                    # Also load raw_df for invest-alerts and top_cities
+                    raw_files = sorted(RAW_DIR.glob("*.csv"), reverse=True)
+                    if raw_files:
+                        print(f"  → Loading raw data for metadata: {raw_files[0].name}")
+                        self._raw_df = pd.read_csv(raw_files[0])
+                    self._initialized = True
+                    return
 
-# ─── Join region + city from raw data into clean data ─────────────────
-if not global_df.empty and not raw_df.empty and "id" in raw_df.columns:
-    if "region" in raw_df.columns:
-        region_map = raw_df.set_index("id")["region"]
-        global_df["region"] = global_df.index.map(region_map)
-    if "city" in raw_df.columns:
-        city_map = raw_df.set_index("id")["city"]
-        global_df["city"] = global_df.index.map(city_map)
-    print(f"✓ Region + city columns added to clean data ({len(global_df)} rows)")
+                # Standard load
+                print("⏳ No cache found. Loading raw CSVs (this may take 30-60s)...")
+                csv_files = sorted(CLEAN_DIR.glob("*.csv"), reverse=True)
+                if csv_files:
+                    print(f"  → Loading clean data: {csv_files[0].name}")
+                    self._global_df = pd.read_csv(csv_files[0], index_col=0)
+                
+                raw_files = sorted(RAW_DIR.glob("*.csv"), reverse=True)
+                if raw_files:
+                    print(f"  → Loading raw data for metadata: {raw_files[0].name}")
+                    self._raw_df = pd.read_csv(raw_files[0])
+                
+                print("  → Loading model...")
+                try: self._xgb_model = joblib.load(MODEL_PATH)
+                except Exception as e:
+                    print(f"⚠️ Could not load model: {e}")
+
+                # Join Region + City
+                if not self._global_df.empty and not self._raw_df.empty and "id" in self._raw_df.columns:
+                    print("  → Joining datasets for mapping...")
+                    cols_to_join = [col for col in ["id", "region", "city"] if col in self._raw_df.columns]
+                    join_df = self._raw_df[cols_to_join].drop_duplicates("id").set_index("id")
+                    self._global_df = self._global_df.merge(join_df, left_index=True, right_index=True, how="left")
+                    print(f"✓ Data joined ({len(self._global_df)} rows)")
+                    # Cache it for next time
+                    try: 
+                        ROOT.joinpath(".cache").mkdir(parents=True, exist_ok=True)
+                        joblib.dump(self._global_df, cached_path)
+                        print(f"✓ Created cache: {cached_path}")
+                    except Exception as e:
+                        print(f"⚠️ Could not save cache: {e}")
+
+                self._initialized = True
+            except Exception as e:
+                print(f"❌ Critical error during analytics initialization: {e}")
+                self._initialized = True
+
+data = AnalyticsData()
 
 # ─── Extract real metadata ─────────────────────────────────────────────
 PROPERTY_TYPES = ["Tous", "Appartement", "Maison", "Terrain", "Autre", "Parking"]
@@ -81,50 +115,57 @@ TYPE_COL_MAP = {
 # Extract real regions and cities from raw data
 REGIONS = ["France entière"]
 TOP_CITIES = []
-if not raw_df.empty:
-    if "region" in raw_df.columns:
-        REGIONS += sorted(raw_df["region"].dropna().unique().tolist())
-    if "city" in raw_df.columns:
-        TOP_CITIES = raw_df["city"].value_counts().head(30).index.tolist()
+
+def get_metadata():
+    global REGIONS, TOP_CITIES
+    if REGIONS != ["France entière"] and TOP_CITIES:
+        return REGIONS, TOP_CITIES
+    
+    df = data.global_df # Use global_df instead of raw_df
+    if not df.empty:
+        if "region" in df.columns:
+            REGIONS = ["France entière"] + sorted(df["region"].dropna().unique().tolist())
+        if "city" in df.columns:
+            TOP_CITIES = df["city"].value_counts().head(30).index.tolist()
+        elif "ville" in df.columns and TOP_CITIES == []:
+            # Fallback if 'city' column name varies
+            TOP_CITIES = ["Toutes villes"]
+    return REGIONS, TOP_CITIES
 
 # Extract real XGBoost hyperparameters
-HYPERPARAMS = {}
-FEATURE_IMPORTANCE = []
-if xgb_model is not None:
-    try:
-        params = xgb_model.get_params()
-        HYPERPARAMS = {
-            "n_estimators": params.get("n_estimators", 300),
-            "learning_rate": params.get("learning_rate", 0.1),
-            "max_depth": params.get("max_depth", 7),
-            "subsample": params.get("subsample", 0.8),
-            "colsample_bytree": params.get("colsample_bytree", 0.8),
-        }
-        # Real feature importance
-        importances = xgb_model.feature_importances_
-        feature_names = xgb_model.feature_names_in_
-        total = importances.sum()
-        fi_list = sorted(
-            zip(feature_names, importances),
-            key=lambda x: x[1], reverse=True
-        )
-        FEATURE_LABELS = {
-            "ville": "Ville (Target Encoded)",
-            "surface": "Surface (m²)",
-            "pieces": "Nb pièces",
-            "type_bien_APPARTEMENT": "Appartement",
-            "type_bien_MAISON": "Maison",
-            "type_bien_TERRAIN": "Terrain",
-            "type_bien_AUTRE": "Autre",
-            "type_bien_PARKING": "Parking",
-        }
-        FEATURE_IMPORTANCE = [
-            {"name": FEATURE_LABELS.get(name, name), "pct": round(float(imp / total) * 100, 1)}
-            for name, imp in fi_list
-            if float(imp / total) * 100 > 0.5  # Only show features > 0.5%
-        ]
-    except Exception as e:
-        print(f"⚠️ Could not extract model params: {e}")
+def get_model_info():
+    model = data.xgb_model
+    params_dict = {}
+    fi_list_final = []
+    
+    if model is not None:
+        try:
+            params = model.get_params()
+            params_dict = {
+                "n_estimators": params.get("n_estimators", 200),
+                "learning_rate": params.get("learning_rate", 0.1),
+                "max_depth": params.get("max_depth", 7),
+                "subsample": params.get("subsample", 0.8),
+                "colsample_bytree": params.get("colsample_bytree", 0.8),
+            }
+            # Real feature importance
+            importances = model.feature_importances_
+            feature_names = model.feature_names_in_
+            total = importances.sum()
+            fi_raw = sorted(zip(feature_names, importances), key=lambda x: x[1], reverse=True)
+            
+            FEATURE_LABELS = {
+                "ville": "Ville (Target Encoded)", "surface": "Surface (m²)", "pieces": "Nb pièces",
+                "type_bien_APPARTEMENT": "Appartement", "type_bien_MAISON": "Maison",
+                "type_bien_TERRAIN": "Terrain", "type_bien_AUTRE": "Autre", "type_bien_PARKING": "Parking",
+            }
+            fi_list_final = [
+                {"name": FEATURE_LABELS.get(name, name), "pct": round(float(imp / total) * 100, 1)}
+                for name, imp in fi_raw if float(imp / total) * 100 > 0.5
+            ]
+        except Exception as e:
+            print(f"⚠️ Could not extract model params: {e}")
+    return params_dict, fi_list_final
 
 # Real model metrics — loaded dynamically from training output
 METRICS_PATH = ROOT / "src" / "models" / "metrics.json"
@@ -141,7 +182,13 @@ def _load_model_metrics():
         print(f"⚠️ Could not load metrics.json, using defaults: {e}")
         return {"mae": "55 657", "rmse": "90 236", "r2": "0.7815"}
 
-MODEL_METRICS = _load_model_metrics()
+# MODEL_METRICS will be loaded on first use to avoid import hangs
+_MODEL_METRICS_CACHE = None
+def get_metrics():
+    global _MODEL_METRICS_CACHE
+    if _MODEL_METRICS_CACHE is None:
+        _MODEL_METRICS_CACHE = _load_model_metrics()
+    return _MODEL_METRICS_CACHE
 
 
 def filter_by_type(df, type_str):
@@ -168,29 +215,27 @@ def filter_by_region(df, region_str):
 # ═══════════════════════════════════════════════════════════════════════
 
 def _build_price_distribution_chart(df):
-    """Build real price distribution chart from actual data — grouped by price bracket."""
+    """Build price distribution using optimized pd.cut — much faster for 300k+ rows."""
     if df.empty or "prix" not in df.columns:
         return []
     
     prices = df["prix"]
-    p_min = int(prices.min())
     p_max = int(prices.max())
     
-    # Create ~8 brackets based on actual data range
-    step = max(50000, int((p_max - p_min) / 8 / 50000) * 50000)
-    if step == 0:
-        step = 50000
-    brackets = list(range(0, p_max + step, step))
+    # Fast step calculation
+    step = 100000 if p_max > 1000000 else 50000
+    bins = list(range(0, p_max + step, step))
+    
+    # Use pandas vectorization (pd.cut) which is O(N) instead of O(N*B)
+    counts = pd.cut(prices, bins=bins).value_counts().sort_index()
     
     chart_data = []
-    for i in range(len(brackets) - 1):
-        lo, hi = brackets[i], brackets[i + 1]
-        count = int(((prices >= lo) & (prices < hi)).sum())
+    for interval, count in counts.items():
         if count > 0:
-            label = f"{lo // 1000}k" if lo > 0 else "0"
+            lo, hi = int(interval.left), int(interval.right)
             chart_data.append({
                 "bracket": f"{lo // 1000}-{hi // 1000}k€",
-                "count": count,
+                "count": int(count),
             })
     
     return chart_data
@@ -199,32 +244,33 @@ def _build_price_distribution_chart(df):
 @router.get("/dashboard/options")
 def get_dashboard_options():
     """Returns dynamic dropdown options for the dashboard."""
+    regions, _ = get_metadata()
     return {
         "property_types": PROPERTY_TYPES,
-        "regions": REGIONS,
+        "regions": regions,
     }
 
 
 @router.get("/dashboard")
 def get_dashboard_data(type: str = "Tous", region: str = "France entière"):
-    df = global_df.copy()
+    df = data.global_df  # Safe: filter_by_type/region always return new DataFrames
 
     if df.empty:
         return {"error": "No data available."}
 
-    # Filter by type
-    df = filter_by_type(df, type)
-    # Filter by region
-    df = filter_by_region(df, region)
+    # Filter sequentially
+    if type != "Tous": df = filter_by_type(df, type)
+    if region != "France entière": df = filter_by_region(df, region)
 
     if df.empty:
         return {"error": f"Aucune donnée pour ces filtres."}
 
     # ── Real KPIs ──
+    metrics = get_metrics()
     median_price = df["prix"].median()
     mean_price = df["prix"].mean()
     ads_count = len(df)
-    r2_pct = f"{float(MODEL_METRICS['r2']) * 100:.1f}"
+    r2_pct = f"{float(metrics['r2']) * 100:.1f}"
 
     # Type breakdown for active markets
     market_data = []
@@ -241,7 +287,7 @@ def get_dashboard_data(type: str = "Tous", region: str = "France entière"):
                     "icon": market_icons.get(t_name, "Building2"),
                     "price": f"{int(avg):,}".replace(",", " "),
                     "location": f"Prix moyen — {len(sub)} biens",
-                    "confidence": min(95, max(70, int(float(MODEL_METRICS['r2']) * 100 + len(sub) / 100))),
+                    "confidence": min(95, max(70, int(float(metrics['r2']) * 100 + len(sub) / 100))),
                     "color_theme": market_colors.get(t_name, "green"),
                 })
 
@@ -251,7 +297,7 @@ def get_dashboard_data(type: str = "Tous", region: str = "France entière"):
             "mean_price": f"{int(df['prix'].mean()):,}".replace(",", " "),
             "prix_m2": f"{int((df['prix'] / df['surface']).median()):,}".replace(",", " ") if 'surface' in df.columns and (df['surface'] > 0).any() else "N/A",
             "ads_count": f"{ads_count:,}".replace(",", " "),
-            "mae": MODEL_METRICS["mae"],
+            "mae": metrics["mae"],
             "r2_pct": r2_pct,
         },
         "chart_data": _build_price_distribution_chart(df),
@@ -272,8 +318,8 @@ def get_dashboard_data(type: str = "Tous", region: str = "France entière"):
             },
             {
                 "zone": "Modèle XGBoost",
-                "change_pct": f"R² = {MODEL_METRICS['r2']}",
-                "timeframe": f"MAE : {MODEL_METRICS['mae']} € · RMSE : {MODEL_METRICS['rmse']} €",
+                "change_pct": f"R² = {metrics['r2']}",
+                "timeframe": f"MAE : {metrics['mae']} € · RMSE : {metrics['rmse']} €",
                 "reason": "performance",
                 "color_theme": "purple"
             },
@@ -288,23 +334,25 @@ def get_dashboard_data(type: str = "Tous", region: str = "France entière"):
 @router.get("/analysis/options")
 def get_analysis_options():
     """Returns dynamic filter options for the analysis page."""
+    gdf = data.global_df
     # Room values from clean data
     room_values = []
-    if not global_df.empty and "pieces" in global_df.columns:
-        unique_rooms = sorted(global_df["pieces"].dropna().unique())
+    if not gdf.empty and "pieces" in gdf.columns:
+        unique_rooms = sorted(gdf["pieces"].dropna().unique())
         # Group into meaningful ranges
         room_values = ["Toutes pièces", "1-2 pièces", "3-4 pièces", "5-6 pièces", "7+ pièces"]
 
+    _, top_cities = get_metadata()
     return {
         "property_types": PROPERTY_TYPES,
-        "cities": ["Toutes villes"] + TOP_CITIES,
+        "cities": ["Toutes villes"] + top_cities,
         "rooms": room_values,
     }
 
 
 @router.get("/analysis")
 def get_analysis_data(zone: str = "Toutes villes", type: str = "Tous", smin: Optional[str] = None, smax: Optional[str] = None, rooms: str = "Toutes pièces"):
-    df = global_df.copy()
+    df = data.global_df.copy()
 
     if df.empty:
         return {"error": "No data available."}
@@ -361,6 +409,7 @@ def get_analysis_data(zone: str = "Toutes villes", type: str = "Tous", smin: Opt
 
     # ── Real top cities by average price/m² (from raw data, filtered) ──
     top_cities = []
+    raw_df = data.raw_df
     if not raw_df.empty and "city" in raw_df.columns and "price" in raw_df.columns:
         raw_filtered = raw_df.dropna(subset=["city", "price"])
         # Apply same type filter to raw data
@@ -395,10 +444,12 @@ def get_analysis_data(zone: str = "Toutes villes", type: str = "Tous", smin: Opt
                     "prix_m2": int(sub_prix_m2.median()),
                 })
 
+    _, fimportance = get_model_info()
+
     return {
         "type_stats": type_stats,
         "distribution_data": distribution,
-        "feature_importance": FEATURE_IMPORTANCE if FEATURE_IMPORTANCE else [
+        "feature_importance": fimportance if fimportance else [
             {"name": "Ville (Target Encoded)", "pct": 82},
             {"name": "Surface (m²)", "pct": 68},
             {"name": "Nb pièces", "pct": 45},
@@ -421,9 +472,15 @@ def get_analysis_data(zone: str = "Toutes villes", type: str = "Tous", smin: Opt
 # ═══════════════════════════════════════════════════════════════════════
 @router.get("/pipeline")
 def get_pipeline_data():
-    raw_count = get_file_lines_count(RAW_DIR)
-    clean_count = get_file_lines_count(CLEAN_DIR)
+    raw_df = data.raw_df
+    gdf = data.global_df
+    
+    raw_count = len(raw_df) if not raw_df.empty else 0
+    clean_count = len(gdf) if not gdf.empty else 0
     doublons = raw_count - clean_count if raw_count > clean_count else 0
+
+    hparams, fimportance = get_model_info()
+    metrics = get_metrics()
 
     return {
         "steps": [
@@ -431,17 +488,18 @@ def get_pipeline_data():
             {"id": 2, "title": "Nettoyage & déduplication", "desc": f"{doublons:,} lignes ignorées (doublons/qualité)".replace(",", " "), "status": "OK", "status_format": "ok"},
             {"id": 3, "title": "Feature engineering", "desc": "Target encoding, log(prix), One-Hot encoding", "status": "OK", "status_format": "ok"},
             {"id": 4, "title": "Entraînement modèle XGBoost", "desc": f"Modèle entraîné sur {int(clean_count * 0.8)} échantillons", "status": "Terminé", "status_format": "ok"},
-            {"id": 5, "title": "Validation & métriques", "desc": f"R² = {MODEL_METRICS['r2']} · MAE = {MODEL_METRICS['mae']} €", "status": "Validé", "status_format": "ok"},
+            {"id": 5, "title": "Validation & métriques", "desc": f"R² = {metrics['r2']} · MAE = {metrics['mae']} €", "status": "Validé", "status_format": "ok"},
             {"id": 6, "title": "Déploiement FastAPI", "desc": "Endpoint /predict opérationnel avec modèle réel", "status": "Actif", "status_format": "deployed"},
         ],
         "metrics": {
-            "mae": MODEL_METRICS["mae"],
-            "rmse": MODEL_METRICS["rmse"],
-            "r2": MODEL_METRICS["r2"],
+            "mae": metrics["mae"],
+            "rmse": metrics["rmse"],
+            "r2": metrics["r2"],
             "train": str(int(clean_count * 0.8)),
             "test": str(int(clean_count * 0.2)),
         },
-        "hyperparams": HYPERPARAMS,
+        "hyperparams": hparams,
+        "feature_importance": fimportance,
         "stack": [
             {"name": "Scraping", "val": "Python · Requests"},
             {"name": "ML", "val": "XGBoost · Scikit-learn"},
@@ -482,44 +540,73 @@ CITY_COORDS = {
 
 @router.get("/heatmap")
 def get_map_heatmap():
-    if raw_df.empty or "city" not in raw_df.columns or "price" not in raw_df.columns:
-        return []
+    df = data.global_df.copy()
+    if df.empty or "city" not in df.columns or "prix" not in df.columns:
+        # Fallback to 'ville' if 'city' is missing locally
+        if not df.empty and "ville" in df.columns:
+            df["city"] = df["ville"]
+        else:
+            return []
 
-    df = raw_df.dropna(subset=["city", "price"])
+    # Filter by city and prix
+    df = df.dropna(subset=["city", "prix"])
+    if "surface" in df.columns:
+        df = df[df["surface"] > 0].copy()
+        df["prix_m2"] = df["prix"] / df["surface"]
+    else:
+        df = df.copy()
+        df["prix_m2"] = df["prix"] / 100
+
+    # Group by city to get averages
     city_stats = df.groupby("city").agg(
-        avg_price=("price", "mean"),
-        count=("price", "count"),
-    ).sort_values("count", ascending=False).head(30)
+        avg_m2=("prix_m2", "mean"),
+        count=("prix_m2", "count"),
+        avg_price=("prix", "mean")
+    ).sort_values("count", ascending=False).head(50)
 
-    # Compute price/m2 for all cities first to determine terciles
-    city_m2 = {}
-    for city in city_stats.index:
-        sub = df[df["city"] == city]
-        if "surface" in sub.columns:
-            sub_valid = sub[sub["surface"] > 0]
-            if len(sub_valid) > 0:
-                city_m2[city] = int((sub_valid["price"] / sub_valid["surface"]).mean())
-    
-    # Compute terciles for color tiers
-    if city_m2:
-        m2_values = sorted(city_m2.values())
+    # Function to find coordinates (matching "Paris 15" -> "Paris")
+    def _find_coords(city_name):
+        def _norm(s): return s.upper().replace("-", " ").strip()
+        city_norm = _norm(city_name)
+        
+        # Direct match on normalized keys
+        for k, v in CITY_COORDS.items():
+            if _norm(k) == city_norm: return v
+            
+        # Partial match (e.g. "PARIS 15" starts with "PARIS")
+        for k, v in CITY_COORDS.items():
+            k_norm = _norm(k)
+            if city_norm.startswith(k_norm) or k_norm in city_norm:
+                return v
+        return None
+
+    # Step 1: Filter cities that have coordinates
+    mappable_cities = []
+    m2_values = []
+    for city, row in city_stats.iterrows():
+        coords = _find_coords(city)
+        if coords:
+            val = int(row["avg_m2"])
+            mappable_cities.append((city, row, coords))
+            if val > 0:
+                m2_values.append(val)
+
+    # Step 2: Compute thresholds for tiers
+    m2_values = sorted(m2_values)
+    if len(m2_values) >= 3:
         t1 = m2_values[len(m2_values) // 3]
         t2 = m2_values[2 * len(m2_values) // 3]
     else:
-        t1, t2 = 3000, 5000
+        t1, t2 = 3500, 6000
 
+    # Step 3: Build result
     result = []
-    for idx, (city, row) in enumerate(city_stats.iterrows()):
-        coords = CITY_COORDS.get(city, None)
-        if coords is None:
-            continue
-        avg_m2 = city_m2.get(city, 0)
-        avg = int(row["avg_price"])
-
-        # Tier: green=cheap, yellow=mid, red=expensive
-        if avg_m2 <= t1:
+    for idx, (city, row, coords) in enumerate(mappable_cities):
+        val = int(row["avg_m2"])
+        
+        if val <= t1:
             tier = "cheap"
-        elif avg_m2 <= t2:
+        elif val <= t2:
             tier = "mid"
         else:
             tier = "expensive"
@@ -528,14 +615,14 @@ def get_map_heatmap():
             "id": idx + 1,
             "lat": coords[0],
             "lng": coords[1],
-            "weight": avg_m2 if avg_m2 > 0 else avg,
-            "price_m2": avg_m2,
+            "weight": val if val > 0 else int(row["avg_price"] / 500),
+            "price_m2": val,
             "city": city,
-            "price": f"{avg_m2:,}".replace(",", " ") if avg_m2 > 0 else f"{avg:,}".replace(",", " "),
+            "price": f"{val:,}".replace(",", " ") if val > 0 else f"{int(row['avg_price']):,}".replace(",", " "),
             "trend": f"{int(row['count'])} annonces",
             "tier": tier,
             "count": int(row["count"]),
-            "active": bool(row["count"] >= 15),
+            "active": bool(row["count"] >= 10),
         })
 
     return result
@@ -543,6 +630,7 @@ def get_map_heatmap():
 
 @router.get("/invest-alerts")
 def get_investment_alerts():
+    raw_df = data.raw_df
     if raw_df.empty or "city" not in raw_df.columns or "price" not in raw_df.columns:
         return []
 

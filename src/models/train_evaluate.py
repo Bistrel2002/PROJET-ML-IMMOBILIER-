@@ -8,13 +8,16 @@ No feature engineering happens here — that is handled by
 features/feature_engineering.py via the pipeline.
 """
 
+import os
 import json
 import numpy as np
 import pandas as pd
 import joblib
 import sys
+import tempfile
+import shutil
 from pathlib import Path
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, RandomizedSearchCV
 from xgboost import XGBRegressor, XGBClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
@@ -24,6 +27,16 @@ from sklearn.metrics import accuracy_score, f1_score
 ROOT = Path(__file__).resolve().parent.parent.parent
 CLEAN_DIR = ROOT / "data" / "clean"
 MODEL_DIR = Path(__file__).resolve().parent
+MODEL_FILE = MODEL_DIR / 'best_regression_model.joblib'
+
+
+def atomic_dump(obj, filename):
+    """Saves an object to a file atomatically."""
+    temp_dir = Path(filename).parent
+    with tempfile.NamedTemporaryFile(dir=temp_dir, delete=False) as tf:
+        joblib.dump(obj, tf.name)
+        temp_name = tf.name
+    shutil.move(temp_name, filename)
 
 
 # =====================================================================
@@ -91,11 +104,31 @@ def train_models(df: pd.DataFrame, save_dir: str = None):
             X_reg, y_reg, test_size=0.2, random_state=42
         )
 
-        reg_model = XGBRegressor(
-            n_estimators=200, learning_rate=0.1, max_depth=7,
-            subsample=0.8, colsample_bytree=0.8, random_state=42
+        # Define parameter grid for optimization
+        param_grid = {
+            'n_estimators': [100, 200, 300, 500],
+            'max_depth': [3, 5, 7, 9],
+            'learning_rate': [0.01, 0.05, 0.1, 0.2],
+            'subsample': [0.7, 0.8, 0.9],
+            'colsample_bytree': [0.7, 0.8, 0.9]
+        }
+
+        print("  → Tuning hyperparameters (RandomizedSearch, 10 iterations) ...")
+        random_search = RandomizedSearchCV(
+            estimator=XGBRegressor(random_state=42),
+            param_distributions=param_grid,
+            n_iter=10,
+            scoring='r2',
+            cv=3,
+            verbose=1,
+            random_state=42,
+            n_jobs=-1
         )
-        reg_model.fit(X_reg_train, y_reg_train)
+        
+        random_search.fit(X_reg_train, y_reg_train)
+        reg_model = random_search.best_estimator_
+        print(f"  ✓ Best Regressor params: {random_search.best_params_}")
+        
         reg_metrics = evaluate_regression(reg_model, X_reg_test, y_reg_test)
         results['XGBoost_prix_brut'] = reg_metrics
 
@@ -117,26 +150,26 @@ def train_models(df: pd.DataFrame, save_dir: str = None):
 
         # --- Sauvegarder le meilleur modèle ---
         if reg_metrics['R2'] > reg_metrics_log['R2']:
-            best_model, best_r2, best_label = reg_model, reg_metrics['R2'], "prix_brut"
+            best_model, best_r2, best_method = reg_model, reg_metrics['R2'], "prix_brut"
         else:
-            best_model, best_r2, best_label = reg_model_log, reg_metrics_log['R2'], "log_prix"
+            best_model, best_r2, best_method = reg_model_log, reg_metrics_log['R2'], "log_prix"
 
         _save_dir = Path(save_dir) if save_dir else MODEL_DIR
         _save_dir.mkdir(parents=True, exist_ok=True)
-        model_path = _save_dir / 'best_regression_model.joblib'
-        joblib.dump(best_model, model_path)
-        print(f"\n  ✓ Best model ({best_label}) saved → {model_path.relative_to(ROOT)}")
-        results['Best_Regression'] = {'R2': best_r2, 'method': best_label}
-        results['model_path'] = str(model_path)
+        
+        atomic_dump(best_model, MODEL_FILE)
+        print(f"\n  ✓ Best model ({best_method}) saved → {MODEL_FILE.relative_to(ROOT)}")
+        results['Best_Regression'] = {'R2': best_r2, 'method': best_method}
+        results['model_path'] = str(MODEL_FILE)
 
         # Save metrics to JSON for the API to read dynamically
-        best_metrics = reg_metrics if best_label == 'prix_brut' else reg_metrics_log
+        best_metrics = reg_metrics if best_method == 'prix_brut' else reg_metrics_log
         metrics_path = _save_dir / 'metrics.json'
         metrics_json = {
             'mae': best_metrics['MAE'],
             'rmse': best_metrics['RMSE'],
             'r2': best_metrics['R2'],
-            'method': best_label,
+            'method': best_method,
         }
         with open(metrics_path, 'w') as f:
             json.dump(metrics_json, f, indent=2, default=str)

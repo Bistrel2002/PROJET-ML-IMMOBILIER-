@@ -14,13 +14,19 @@ interface PipelineData {
 export default function PipelinePage() {
   const [data, setData] = useState<PipelineData | null>(null);
 
+  const [error, setError] = useState<string | null>(null);
+
   useEffect(() => {
     fetch(`${API_BASE_URL}/api/analytics/pipeline`)
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) throw new Error(`Erreur serveur (${res.status})`);
+        return res.json();
+      })
       .then(setData)
-      .catch(console.error);
+      .catch(err => setError(err.message || "Impossible de charger le pipeline"));
   }, []);
 
+  if (error) return <div className="flex h-full items-center justify-center text-red-400">{error}</div>;
   if (!data) return <div className="flex h-full items-center justify-center text-slate-400">Chargement...</div>;
 
   return (
@@ -135,10 +141,10 @@ export default function PipelinePage() {
         </div>
       </div>
       
-      {/* Bottom info section */}
-      <div className="fixed bottom-6 left-72">
+      {/* Bottom info section — B11: sticky instead of fixed */}
+      <div className="mt-12 pt-4 border-t border-slate-800">
         <div className="flex items-center gap-2 text-xs text-slate-400">
-          <div className="h-1.5 w-1.5 rounded-full bg-brand-green"></div>
+          <div className="h-1.5 w-1.5 rounded-full bg-emerald-400"></div>
           Pipeline actif — {data.last_run}
         </div>
         <div className="text-[10px] text-slate-500 mt-1">

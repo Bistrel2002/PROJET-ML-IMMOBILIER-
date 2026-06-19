@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { API_BASE_URL } from "@/lib/constants";
 import { MapContainer, TileLayer, CircleMarker, Tooltip } from "react-leaflet";
+import type { Map } from "leaflet";
 import "leaflet/dist/leaflet.css";
 
 interface MapDataPoint {
